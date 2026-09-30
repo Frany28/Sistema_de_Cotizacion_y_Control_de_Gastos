@@ -413,7 +413,7 @@ export const crearCotizacionDesdeRegistro = async (datos) => {
     mercancia,
     contenedor,
     detalle,
-    total, // ⚠️ Se recibe, pero el total real se calcula en backend para evitar inconsistencias
+    total,
     fecha = new Date(),
   } = datos;
 
