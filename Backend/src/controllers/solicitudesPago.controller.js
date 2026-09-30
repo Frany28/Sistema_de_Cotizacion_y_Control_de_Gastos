@@ -11,11 +11,21 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 import { generarHTMLOrdenPago } from "../../templates/generarHTMLOrdenDePago.js";
+import cacheMemoria, {
+  obtenerScopeSucursalCache,
+  invalidarCachePorPrefijos,
+} from "../utils/cacheMemoria.js";
 
 // 🔹 NUEVOS IMPORTS PARA EL LOGO LOCAL
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
+const PREFIJOS_CACHE_SOLICITUDES = [
+  "solicitudesPago_",
+  "solicitudPago_",
+  "ordenesPagoSolicitud_",
+];
 
 async function firmaToDataUrl(key) {
   console.log("🪣 [DEBUG] Intentando leer del bucket:", process.env.S3_BUCKET);
@@ -760,15 +770,31 @@ async function guardarPdfOrdenPagoPrimerAbono({
  * 1. LISTAR SOLICITUDES DE PAGO
  * ========================================================== */
 export const obtenerSolicitudesPago = async (req, res) => {
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const offset = (page - 1) * limit;
   const { estado } = req.query;
   const search = (req.query.search || "").trim();
+  const claveCache = `solicitudesPago_${scopeSucursal}_${page}_${limit}_${estado || "todos"}_${search}`;
+  const enCache = cacheMemoria.get(claveCache);
+  if (enCache) return res.json(enCache);
 
   try {
     let whereSQL = "";
     const whereParams = [];
+
+    if (!(esAdmin && scopeSucursal === "todas")) {
+      whereSQL += (whereSQL ? " AND " : " WHERE ") + "sp.sucursal_id = ?";
+      whereParams.push(Number(scopeSucursal));
+    }
 
     if (estado && estado !== "todos") {
       whereSQL += (whereSQL ? " AND " : " WHERE ") + "sp.estado = ?";
@@ -826,7 +852,9 @@ export const obtenerSolicitudesPago = async (req, res) => {
       whereParams,
     );
 
-    return res.json({ solicitudes, total, page, limit });
+    const respuesta = { solicitudes, total, page, limit };
+    cacheMemoria.set(claveCache, respuesta, 300);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error al listar solicitudes de pago:", error);
     return res
@@ -840,6 +868,21 @@ export const obtenerSolicitudesPago = async (req, res) => {
  * ========================================================== */
 export const obtenerSolicitudPagoPorId = async (req, res) => {
   const { id } = req.params;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sp.sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+  const claveCache = `solicitudPago_${scopeSucursal}_${id}`;
+  const enCache = cacheMemoria.get(claveCache);
+  if (enCache) return res.json(enCache);
 
   try {
     // 1) Solicitud
@@ -859,9 +902,9 @@ export const obtenerSolicitudPagoPorId = async (req, res) => {
         LEFT JOIN usuarios    ur ON ur.id = sp.usuario_revisa_id
         LEFT JOIN usuarios    up ON up.id = sp.usuario_aprueba_id
         LEFT JOIN bancos      b  ON b.id  = sp.banco_id
-       WHERE sp.id = ?
-      `,
-      [id],
+       WHERE sp.id = ?${whereSucursalSql}
+       `,
+      [id, ...paramsSucursal],
     );
 
     if (!solicitud) {
@@ -952,7 +995,7 @@ export const obtenerSolicitudPagoPorId = async (req, res) => {
         tasaSolicitud > 0 ? saldoPendienteUsd * tasaSolicitud : 0;
     }
 
-    return res.json({
+    const respuesta = {
       ...solicitud,
       usuario_firma: usuarioFirma,
       bancosDisponibles,
@@ -969,7 +1012,10 @@ export const obtenerSolicitudPagoPorId = async (req, res) => {
 
       // ✅ Referencia “en moneda” usando la tasa guardada en solicitud (no es la tasa del día)
       saldo_pendiente_moneda: saldoPendienteMoneda,
-    });
+    };
+
+    cacheMemoria.set(claveCache, respuesta, 300);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error al obtener solicitud de pago:", error);
     return res
@@ -984,10 +1030,22 @@ export const obtenerSolicitudPagoPorId = async (req, res) => {
 export const actualizarSolicitudPago = async (req, res) => {
   const { id } = req.params;
   const campos = req.body;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   const [[s]] = await db.execute(
-    "SELECT estado FROM solicitudes_pago WHERE id = ?",
-    [id],
+    `SELECT estado, sucursal_id FROM solicitudes_pago WHERE id = ?${whereSucursalSql}`,
+    [id, ...paramsSucursal],
   );
   if (!s) return res.status(404).json({ message: "Solicitud no encontrada" });
   if (s.estado !== "por_pagar") {
@@ -999,10 +1057,19 @@ export const actualizarSolicitudPago = async (req, res) => {
   const setCols = Object.keys(campos)
     .map((k) => `${k} = ?`)
     .join(", ");
-  await db.execute(`UPDATE solicitudes_pago SET ${setCols} WHERE id = ?`, [
+  await db.execute(`UPDATE solicitudes_pago SET ${setCols} WHERE id = ?${whereSucursalSql}`, [
     ...Object.values(campos),
     id,
+    ...paramsSucursal,
   ]);
+
+  invalidarCachePorPrefijos({
+    prefijos: PREFIJOS_CACHE_SOLICITUDES,
+    scopeSucursal:
+      !Number.isNaN(Number(s.sucursal_id)) && Number(s.sucursal_id) > 0
+        ? String(Number(s.sucursal_id))
+        : null,
+  });
 
   return res.json({ message: "Solicitud actualizada correctamente" });
 };
@@ -1013,10 +1080,22 @@ export const actualizarSolicitudPago = async (req, res) => {
 export const cancelarSolicitudPago = async (req, res) => {
   const { id } = req.params;
   const { motivo } = req.body;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   const [[s]] = await db.execute(
-    "SELECT estado FROM solicitudes_pago WHERE id = ?",
-    [id],
+    `SELECT estado, sucursal_id FROM solicitudes_pago WHERE id = ?${whereSucursalSql}`,
+    [id, ...paramsSucursal],
   );
   if (!s) return res.status(404).json({ message: "Solicitud no encontrada" });
   if (s.estado !== "por_pagar") {
@@ -1026,21 +1105,41 @@ export const cancelarSolicitudPago = async (req, res) => {
   }
 
   await db.execute(
-    `UPDATE solicitudes_pago
-        SET estado       = 'cancelada',
-            observaciones = CONCAT(
-              IFNULL(observaciones, ''), 
-              '\nCancelada: ', ?
-            )
-      WHERE id = ?`,
-    [motivo || "Sin motivo especificado", id],
+      `UPDATE solicitudes_pago
+         SET estado       = 'cancelada',
+             observaciones = CONCAT(
+               IFNULL(observaciones, ''), 
+               '\nCancelada: ', ?
+             )
+       WHERE id = ?${whereSucursalSql}`,
+    [motivo || "Sin motivo especificado", id, ...paramsSucursal],
   );
+
+  invalidarCachePorPrefijos({
+    prefijos: PREFIJOS_CACHE_SOLICITUDES,
+    scopeSucursal:
+      !Number.isNaN(Number(s.sucursal_id)) && Number(s.sucursal_id) > 0
+        ? String(Number(s.sucursal_id))
+        : null,
+  });
 
   return res.json({ message: "Solicitud cancelada" });
 };
 
 export const pagarSolicitudPago = async (req, res) => {
   const { id } = req.params;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   const usuarioApruebaId = req.user?.id ?? req.session?.usuario?.id ?? null;
 
@@ -1095,12 +1194,12 @@ export const pagarSolicitudPago = async (req, res) => {
     // 1) Bloquear solicitud
     const [[solicitud]] = await conexion.execute(
       `
-      SELECT id, codigo, monto_total, monto_pagado, estado, moneda
+      SELECT id, codigo, monto_total, monto_pagado, estado, moneda, sucursal_id
       FROM solicitudes_pago
-      WHERE id = ?
+      WHERE id = ?${whereSucursalSql}
       FOR UPDATE
       `,
-      [id],
+      [id, ...paramsSucursal],
     );
 
     if (!solicitud) {
@@ -1220,6 +1319,15 @@ export const pagarSolicitudPago = async (req, res) => {
 
     await conexion.commit();
 
+    invalidarCachePorPrefijos({
+      prefijos: PREFIJOS_CACHE_SOLICITUDES,
+      scopeSucursal:
+        !Number.isNaN(Number(solicitud.sucursal_id)) &&
+        Number(solicitud.sucursal_id) > 0
+          ? String(Number(solicitud.sucursal_id))
+          : null,
+    });
+
     // 5) Generar PDF orden de pago (tu lógica actual)
     let resultadoPdf = null;
     if (typeof guardarPdfOrdenPagoPorAbono === "function") {
@@ -1270,6 +1378,21 @@ export const pagarSolicitudPago = async (req, res) => {
 
 export const obtenerOrdenesPagoSolicitud = async (req, res) => {
   const solicitudPagoId = Number(req.params.id);
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+  const claveCache = `ordenesPagoSolicitud_${scopeSucursal}_${solicitudPagoId}`;
+  const enCache = cacheMemoria.get(claveCache);
+  if (enCache) return res.json(enCache);
 
   try {
     if (!solicitudPagoId || Number.isNaN(solicitudPagoId)) {
@@ -1280,9 +1403,9 @@ export const obtenerOrdenesPagoSolicitud = async (req, res) => {
     const [[solicitud]] = await db.execute(
       `SELECT id, codigo, estado
        FROM solicitudes_pago
-       WHERE id = ?
+       WHERE id = ?${whereSucursalSql}
        LIMIT 1`,
-      [solicitudPagoId],
+      [solicitudPagoId, ...paramsSucursal],
     );
 
     if (!solicitud) {
@@ -1359,6 +1482,7 @@ export const obtenerOrdenesPagoSolicitud = async (req, res) => {
       }),
     );
 
+    cacheMemoria.set(claveCache, ordenesPago, 300);
     return res.json(ordenesPago);
   } catch (error) {
     console.error("Error obtenerOrdenesPagoSolicitud:", error);

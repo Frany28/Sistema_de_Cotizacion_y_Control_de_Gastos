@@ -1,6 +1,7 @@
 // middlewares/verificarPermiso.js
 import db from "../config/database.js";
 import { autenticarUsuario } from "./autenticarUsuario.js";
+import cacheMemoria from "../utils/cacheMemoria.js";
 
 /**
  * Middleware para proteger rutas según permiso dinámico.
@@ -21,6 +22,18 @@ export const verificarPermiso = (permisoRequerido) => [
     }
 
     try {
+      const claveCache = `permiso_rol_${usuario.rol_id}_${permisoRequerido}`;
+      const hit = cacheMemoria.get(claveCache);
+
+      if (hit !== undefined) {
+        if (!hit) {
+          return res
+            .status(403)
+            .json({ message: "No tienes permiso para esta acciÃ³n" });
+        }
+        return next();
+      }
+
       // 3) Verificar en la BD si este rol tiene la clave de permiso
       const [rows] = await db.query(
         `SELECT 1
@@ -30,6 +43,8 @@ export const verificarPermiso = (permisoRequerido) => [
           LIMIT 1`,
         [usuario.rol_id, permisoRequerido]
       );
+
+      cacheMemoria.set(claveCache, rows.length > 0, 600);
 
       if (!rows.length) {
         return res

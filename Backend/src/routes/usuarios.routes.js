@@ -4,6 +4,7 @@ import db from "../config/database.js";
 import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
 import { verificarPermiso } from "../Middleware/verificarPermiso.js";
 import { uploadFirma } from "../utils/s3.js";
+import cacheMemoria from "../utils/cacheMemoria.js";
 
 import {
   obtenerUsuarios,
@@ -66,6 +67,12 @@ router.get("/permisos/:clave", autenticarUsuario, async (req, res) => {
       return res.json({ tienePermiso: true });
     }
 
+    const claveCache = `permiso_rol_${usuario.rol_id}_${clave}`;
+    const hit = cacheMemoria.get(claveCache);
+    if (hit !== undefined) {
+      return res.json({ tienePermiso: Boolean(hit) });
+    }
+
     const [rows] = await db.query(
       `SELECT 1
          FROM roles_permisos rp
@@ -75,7 +82,9 @@ router.get("/permisos/:clave", autenticarUsuario, async (req, res) => {
       [usuario.rol_id, clave]
     );
 
-    res.json({ tienePermiso: rows.length > 0 });
+    const tienePermiso = rows.length > 0;
+    cacheMemoria.set(claveCache, tienePermiso, 600);
+    res.json({ tienePermiso });
   } catch (error) {
     console.error("Error al verificar permiso (frontend):", error);
     res.status(500).json({ message: "Error interno al verificar permiso" });

@@ -18,6 +18,7 @@ import ModalError from "../Modals/ModalError.jsx";
 import ModalExito from "../Modals/ModalExito.jsx";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { es } from "date-fns/locale";
+import { verificarPermisoFront } from "../../../utils/verificarPermisoFront.js";
 
 // ✅ FIX BUILD: ruta correcta
 import api from "../../api/index.js";
@@ -33,6 +34,7 @@ function TablaArchivos() {
   const [cargando, setCargando] = useState(true);
   const [terminoBusqueda, setTerminoBusqueda] = useState("");
   const [orden, setOrden] = useState({ campo: "nombre", asc: true });
+  const [puedeEditarArchivos, setPuedeEditarArchivos] = useState(false);
 
   // Carpeta actual (para subir al lugar correcto)
   const [carpetaActual, setCarpetaActual] = useState({
@@ -107,6 +109,20 @@ function TablaArchivos() {
     obtenerArbolArchivos();
   }, [obtenerArbolArchivos]);
 
+  useEffect(() => {
+    let activo = true;
+
+    const cargarPermisos = async () => {
+      const tienePermiso = await verificarPermisoFront("editarArchivos");
+      if (activo) setPuedeEditarArchivos(tienePermiso);
+    };
+
+    cargarPermisos();
+    return () => {
+      activo = false;
+    };
+  }, []);
+
   const irARaiz = () => {
     setCarpetaActual({
       carpetaId: null,
@@ -178,6 +194,7 @@ function TablaArchivos() {
   /* Subida de archivos                                                      */
   /* ----------------------------------------------------------------------- */
   const abrirModalSubida = () => {
+    if (!puedeEditarArchivos) return;
     setArchivoSeleccionado(null);
     setEstaArrastrando(false);
     setModalSubidaAbierto(true);
@@ -261,6 +278,7 @@ function TablaArchivos() {
   /* Crear carpeta (BD)                                                      */
   /* ----------------------------------------------------------------------- */
   const abrirModalCarpeta = () => {
+    if (!puedeEditarArchivos) return;
     setNombreCarpetaNueva("");
     setModalCarpetaAbierto(true);
   };
@@ -510,13 +528,15 @@ function TablaArchivos() {
           </button>
 
           {/* ✅ Nueva carpeta (BD) */}
-          <button
-            onClick={abrirModalCarpeta}
-            className="px-3 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 flex-shrink-0 bg-gray-700/40 text-gray-200 border border-gray-600 hover:bg-gray-700/70"
-          >
-            <FolderPlus size={16} />
-            <span>Nueva carpeta</span>
-          </button>
+          {puedeEditarArchivos && (
+            <button
+              onClick={abrirModalCarpeta}
+              className="px-3 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 flex-shrink-0 bg-gray-700/40 text-gray-200 border border-gray-600 hover:bg-gray-700/70"
+            >
+              <FolderPlus size={16} />
+              <span>Nueva carpeta</span>
+            </button>
+          )}
 
           {/* Destino actual */}
           <div className="px-3 py-2 rounded-lg border border-gray-600 bg-gray-700/40 text-gray-200 flex items-center gap-2 flex-shrink-0">
@@ -531,13 +551,15 @@ function TablaArchivos() {
           </div>
 
           {/* Subir archivo */}
-          <button
-            onClick={abrirModalSubida}
-            className="px-3 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 flex-shrink-0 bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30"
-          >
-            <Upload size={16} />
-            <span>Subir archivo</span>
-          </button>
+          {puedeEditarArchivos && (
+            <button
+              onClick={abrirModalSubida}
+              className="px-3 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 flex-shrink-0 bg-blue-600/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600/30"
+            >
+              <Upload size={16} />
+              <span>Subir archivo</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -577,7 +599,7 @@ function TablaArchivos() {
       </div>
 
       {/* Modal crear carpeta */}
-      {modalCarpetaAbierto && (
+      {puedeEditarArchivos && modalCarpetaAbierto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
           <div className="w-full max-w-xl bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
@@ -641,7 +663,7 @@ function TablaArchivos() {
       )}
 
       {/* Modal subida */}
-      {modalSubidaAbierto && (
+      {puedeEditarArchivos && modalSubidaAbierto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
           <div className="w-full max-w-xl bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">

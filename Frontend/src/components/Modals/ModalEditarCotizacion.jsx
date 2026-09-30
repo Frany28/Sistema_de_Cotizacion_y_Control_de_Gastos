@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Pencil, Search, ChevronDown, Trash2, Plus } from "lucide-react";
 import ModalExito from "../Modals/ModalExito";
+
+const OPERACIONES_SUGERIDAS = ["Importación", "Exportación"];
 // Eliminado ModalError: usaremos aviso inline
 // import ModalError from "../Modals/ModalError";
 
@@ -526,11 +528,18 @@ export default function ModalEditarCotizacion({
                   </label>
                   <input
                     type="text"
+                    list="operaciones-sugeridas-editar-cotizacion"
                     name="operacion"
                     value={formulario.operacion}
                     onChange={manejarCambio}
+                    placeholder="Escriba o seleccione un tipo de operación"
                     className="w-full px-3 py-2 border rounded-md bg-gray-700 text-white"
                   />
+                  <datalist id="operaciones-sugeridas-editar-cotizacion">
+                    {OPERACIONES_SUGERIDAS.map((operacion) => (
+                      <option key={operacion} value={operacion} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>

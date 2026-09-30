@@ -11,7 +11,6 @@ export default function ModalEditarGasto({
   gasto,
   onSave,
   proveedores = [],
-  sucursales = [],
   tiposGasto = [],
   cotizacionesIniciales = [],
 }) {
@@ -25,7 +24,6 @@ export default function ModalEditarGasto({
     subtotal: "0.00",
     porcentaje_iva: 16,
     fecha: new Date().toISOString().split("T")[0],
-    sucursal_id: "",
     moneda: "USD",
     tasa_cambio: "",
     documento: null,
@@ -37,9 +35,7 @@ export default function ModalEditarGasto({
   });
 
   const [cotizaciones, setCotizaciones] = useState(cotizacionesIniciales);
-  const [busquedaSucursal, setBusquedaSucursal] = useState("");
   const [busquedaCotizacion, setBusquedaCotizacion] = useState("");
-  const [showSucursales, setShowSucursales] = useState(false);
   const [showCotizaciones, setShowCotizaciones] = useState(false);
   const [loadingLists, setLoadingLists] = useState(false);
   const [documentoArchivo, setDocumentoArchivo] = useState(null);
@@ -148,16 +144,12 @@ export default function ModalEditarGasto({
         proveedores.length === 0
           ? api.get("/proveedores")
           : Promise.resolve({ data: proveedores }),
-        sucursales.length === 0
-          ? api.get("/sucursales")
-          : Promise.resolve({ data: sucursales }),
         tiposGasto.length === 0
           ? api.get("/gastos/tipos")
           : Promise.resolve({ data: tiposGastoLocal }),
       ]);
 
       if (proveedoresLocal.length === 0) setProveedoresLocal(prov.data);
-      if (sucursalesLocal.length === 0) setSucursalesLocal(suc.data);
       if (tiposGastoLocal.length === 0) setTiposGastoLocal(tipos.data);
     } catch (e) {
       console.error("Error cargando listas adicionales:", e);
@@ -199,7 +191,6 @@ export default function ModalEditarGasto({
         proveedor_id: gasto.proveedor_id?.toString() || "",
         porcentaje_iva: parseFloat(gasto.porcentaje_iva) || 16,
         fecha: fechaFormateada,
-        sucursal_id: gasto.sucursal_id?.toString() || "",
         cotizacion_id: gasto.cotizacion_id?.toString() || "",
         moneda: gasto.moneda || "USD",
         tasa_cambio: gasto.tasa_cambio?.toString() || "",
@@ -208,7 +199,6 @@ export default function ModalEditarGasto({
 
       if (
         proveedores.length === 0 ||
-        sucursales.length === 0 ||
         tiposGasto.length === 0
       ) {
         cargarListasAdicionales();
@@ -268,7 +258,6 @@ export default function ModalEditarGasto({
     data.append("total", String(total));
     data.append("fecha", form.fecha);
     data.append("tipo_gasto_id", form.tipo_gasto_id);
-    data.append("sucursal_id", form.sucursal_id);
     data.append("moneda", form.moneda);
 
     if (gasto?.estado === "rechazado") {
@@ -461,81 +450,6 @@ export default function ModalEditarGasto({
                   </select>
                 </div>
 
-                {/* Sucursal – Selector con búsqueda */}
-                <div className="relative">
-                  <label className="block text-sm font-medium mb-1">
-                    Sucursal
-                  </label>
-                  <input
-                    type="text"
-                    value={
-                      getNombreSeleccionado(
-                        form.sucursal_id,
-                        sucursales,
-                        "nombre"
-                      ) ||
-                      gasto?.sucursal_id ||
-                      ""
-                    }
-                    readOnly
-                    onClick={() => setShowSucursales(!showSucursales)}
-                    className="w-full px-3 py-2 border rounded-md bg-gray-700 text-white cursor-pointer"
-                    placeholder="Seleccione sucursal"
-                  />
-                  {showSucursales && (
-                    <div className="absolute z-10 mt-1 w-full bg-gray-700 rounded-md shadow-lg border border-gray-600 max-h-60 overflow-y-auto">
-                      <div className="p-2 border-b border-gray-600 sticky top-0 bg-gray-700">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <input
-                            type="text"
-                            value={busquedaSucursal}
-                            onChange={(e) =>
-                              setBusquedaSucursal(e.target.value)
-                            }
-                            className="w-full pl-10 pr-4 py-2 bg-gray-800 text-white rounded focus:outline-none"
-                            placeholder="Buscar sucursal…"
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-                      {(() => {
-                        const resultados = sucursales.filter((s) =>
-                          s.nombre
-                            .toLowerCase()
-                            .includes(busquedaSucursal.toLowerCase())
-                        );
-                        if (resultados.length === 0) {
-                          return (
-                            <div className="px-4 py-2 text-gray-400">
-                              No hay resultados
-                            </div>
-                          );
-                        }
-                        return resultados.map((s) => (
-                          <div
-                            key={s.id}
-                            className={`px-4 py-2 hover:bg-gray-600 cursor-pointer ${
-                              form.sucursal_id === s.id.toString()
-                                ? "bg-blue-600"
-                                : ""
-                            }`}
-                            onClick={() => {
-                              setForm((prev) => ({
-                                ...prev,
-                                sucursal_id: s.id.toString(),
-                              }));
-                              setShowSucursales(false);
-                              setBusquedaSucursal("");
-                            }}
-                          >
-                            {s.nombre}
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  )}
-                </div>
 
                 {/* Cotización (condicional) */}
                 {camposVisibles.cotizacion && (

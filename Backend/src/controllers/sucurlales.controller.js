@@ -1,5 +1,14 @@
 // controllers/sucursales.controller.js
 import db from "../config/database.js";
+import cacheMemoria from "../utils/cacheMemoria.js";
+
+const limpiarCacheSucursales = () => {
+  for (const clave of cacheMemoria.keys()) {
+    if (clave.startsWith("sucursales_") || clave.startsWith("sucursal_")) {
+      cacheMemoria.del(clave);
+    }
+  }
+};
 
 export const obtenerSucursales = async (req, res) => {
   // 1) Parseo seguro de page y limit
@@ -10,6 +19,9 @@ export const obtenerSucursales = async (req, res) => {
     ? 10
     : Number(req.query.limit);
   const offset = (page - 1) * limit;
+  const claveCache = `sucursales_${page}_${limit}`;
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
 
   try {
     // 2) Total de registros sin paginar
@@ -26,7 +38,9 @@ export const obtenerSucursales = async (req, res) => {
     );
 
     // 4) Respondemos con el mismo formato que en clientes
-    return res.json({ sucursales, total });
+    const respuesta = { sucursales, total };
+    cacheMemoria.set(claveCache, respuesta, 300);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error al obtener sucursales:", error);
     return res.status(500).json({ message: "Error al obtener las sucursales" });
@@ -35,6 +49,10 @@ export const obtenerSucursales = async (req, res) => {
 
 // Obtener una sucursal por ID
 export const obtenerSucursal = async (req, res) => {
+  const claveCache = `sucursal_${req.params.id}`;
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
+
   try {
     const [sucursal] = await db.execute(
       "SELECT * FROM sucursales WHERE id = ?",
@@ -45,6 +63,7 @@ export const obtenerSucursal = async (req, res) => {
       return res.status(404).json({ message: "Sucursal no encontrada" });
     }
 
+    cacheMemoria.set(claveCache, sucursal[0], 300);
     res.json(sucursal[0]);
   } catch (error) {
     console.error("Error al obtener sucursal:", error);
@@ -116,6 +135,7 @@ export const crearSucursal = async (req, res) => {
         usuarioId,
       ],
     );
+    limpiarCacheSucursales();
 
     res.status(201).json({
       message: "Sucursal creada correctamente",
@@ -208,6 +228,7 @@ export const actualizarSucursal = async (req, res) => {
   valores.push(id);
 
   await db.execute(`UPDATE sucursales SET ${setSql} WHERE id = ?`, valores);
+  limpiarCacheSucursales();
 
   // ④ Devolver la fila actualizada
   const [fila] = await db.execute("SELECT * FROM sucursales WHERE id = ?", [
@@ -257,6 +278,7 @@ export const eliminarSucursal = async (req, res) => {
       return res.status(404).json({ message: "Sucursal no encontrada" });
     }
 
+    limpiarCacheSucursales();
     res.json({ message: "Sucursal eliminada correctamente" });
   } catch (error) {
     console.error("Error al eliminar sucursal:", error);
@@ -266,6 +288,10 @@ export const eliminarSucursal = async (req, res) => {
 
 // controllers/sucurlales.controller.js
 export const obtenerSucursalesDropdown = async (req, res) => {
+  const claveCache = "sucursales_dropdown";
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
+
   try {
     const [sucursales] = await db.execute(
       `SELECT id, codigo, nombre
@@ -274,6 +300,7 @@ export const obtenerSucursalesDropdown = async (req, res) => {
         ORDER BY nombre`,
     );
 
+    cacheMemoria.set(claveCache, sucursales, 300);
     return res.json(sucursales);
   } catch (error) {
     console.error("Error al obtener sucursales para dropdown:", error);

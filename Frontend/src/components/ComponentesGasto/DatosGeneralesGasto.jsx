@@ -1,6 +1,6 @@
 import React from "react";
 
-const DatosBasicosGasto = ({ gasto, setGasto, sucursales = [] }) => {
+const DatosBasicosGasto = ({ gasto, setGasto }) => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setGasto((prev) => ({ ...prev, [name]: value }));
@@ -18,7 +18,7 @@ const DatosBasicosGasto = ({ gasto, setGasto, sucursales = [] }) => {
       "image/webp",
     ];
     if (!tiposValidos.includes(file.type)) {
-      alert("Solo se permiten imágenes (png, jpg, webp) o PDF.");
+      alert("Solo se permiten imagenes (png, jpg, webp) o PDF.");
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
@@ -29,12 +29,8 @@ const DatosBasicosGasto = ({ gasto, setGasto, sucursales = [] }) => {
     setGasto((prev) => ({ ...prev, documento: file }));
   };
 
-  /* -------------------- Render -------------------- */
-  const opcionesSucursales = Array.isArray(sucursales) ? sucursales : [];
-
   return (
     <div className="grid grid-cols-1 gap-6 bg-gray-800 p-6 rounded-xl shadow-md text-white">
-      {/* Concepto */}
       <div>
         <label className="text-sm mb-1 block text-white">
           Concepto del Gasto *
@@ -50,7 +46,6 @@ const DatosBasicosGasto = ({ gasto, setGasto, sucursales = [] }) => {
         />
       </div>
 
-      {/* Fecha */}
       <div>
         <label className="text-sm mb-1 block text-white">
           Fecha del Gasto *
@@ -65,39 +60,18 @@ const DatosBasicosGasto = ({ gasto, setGasto, sucursales = [] }) => {
         />
       </div>
 
-      {/* Sucursal */}
-      <div>
-        <label className="text-sm mb-1 block text-white">Sucursal *</label>
-        <select
-          name="sucursal_id"
-          value={gasto.sucursal_id || ""}
-          onChange={handleChange}
-          className="cursor-pointer w-full p-2 rounded bg-gray-700 border border-gray-600 text-white"
-          required
-        >
-          <option value="">Seleccione una sucursal</option>
-          {opcionesSucursales.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nombre}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Descripción */}
       <div className="col-span-1 md:col-span-2">
-        <label className="text-sm mb-1 block text-white">Descripción</label>
+        <label className="text-sm mb-1 block text-white">Descripcion</label>
         <textarea
           name="descripcion"
           value={gasto.descripcion || ""}
           onChange={handleChange}
           className="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white"
-          placeholder="Detalle adicional del gasto…"
+          placeholder="Detalle adicional del gasto..."
           rows={3}
         />
       </div>
 
-      {/* Documento */}
       <div className="col-span-1">
         <label className="block mb-1 text-sm font-medium text-white">
           Documento (imagen o PDF) *

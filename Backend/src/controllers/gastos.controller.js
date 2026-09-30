@@ -7,123 +7,245 @@ import {
 } from "../utils/s3.js";
 import { obtenerOcrearGrupoFactura } from "../utils/gruposArchivos.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import cacheMemoria from "../utils/cacheMemoria.js";
+import cacheMemoria, {
+  obtenerScopeSucursalCache,
+  invalidarCachePorPrefijos,
+} from "../utils/cacheMemoria.js";
 
 // controllers/gastos.controller.js
 export const getGastos = async (req, res) => {
-  const page = +req.query.page || 1;
-  const limit = +req.query.limit || 5;
+  const pageRaw = Number(req.query.page);
+  const limitRaw = Number(req.query.limit);
+  const page = Number.isInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const limit =
+    Number.isInteger(limitRaw) && limitRaw > 0
+      ? Math.min(limitRaw, 100)
+      : 5;
   const offset = (page - 1) * limit;
   const q = (req.query.search || "").trim();
 
-  const claveCache = `gastos_${page}_${limit}_${q}`;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+
+  const filtroSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND g.sucursal_id = ?";
+
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const claveCache = `gastos_${scopeSucursal}_${page}_${limit}_${q}`;
   const respuestaEnCache = cacheMemoria.get(claveCache);
   if (respuestaEnCache) return res.json(respuestaEnCache);
 
   try {
-    // 1) TOTAL filtrado
-    const [[{ total }]] = await db.query(
-      q
-        ? `SELECT COUNT(*) AS total
-            FROM gastos g
-            LEFT JOIN proveedores p ON p.id = g.proveedor_id
-            WHERE g.codigo        LIKE ? OR
-            p.nombre        LIKE ? OR
-            g.concepto_pago LIKE ?`
-        : `SELECT COUNT(*) AS total FROM gastos`,
-      q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [],
-    );
+    // 1) TOTAL (con filtro por sucursal)
+    let total = 0;
 
-    // 2) LISTA paginada filtrada
-    const [gastos] = await db.query(
-      `
-      SELECT g.id,
-      g.codigo,
-        g.fecha,
-        g.total,
-        g.estado,
-        g.motivo_rechazo,
-        g.tipo_gasto_id,                 
-        tg.nombre        AS tipo_gasto,  
-        p.nombre         AS proveedor,
-        s.nombre         AS sucursal,
-        g.concepto_pago,
-        g.descripcion, 
-        g.subtotal,
-        g.impuesto,
-        g.moneda,
-        g.porcentaje_iva, 
-        g.tasa_cambio,
-        g.cotizacion_id,
-        g.documento
+    if (q) {
+      const [[{ total: count }]] = await db.query(
+        `
+        SELECT COUNT(*) AS total
+          FROM gastos g
+          LEFT JOIN proveedores p ON p.id = g.proveedor_id
+         WHERE (
+              g.codigo        LIKE ?
+           OR p.nombre        LIKE ?
+           OR g.concepto_pago LIKE ?
+         )
+         ${filtroSucursalSql}
+        `,
+        [`%${q}%`, `%${q}%`, `%${q}%`, ...paramsSucursal],
+      );
+      total = count;
+    } else {
+      const [[{ total: count }]] = await db.query(
+        `
+        SELECT COUNT(*) AS total
+          FROM gastos g
+         WHERE 1=1
+         ${filtroSucursalSql}
+        `,
+        [...paramsSucursal],
+      );
+      total = count;
+    }
+
+    // 2) LISTA (con filtro por sucursal)
+    let gastos = [];
+    if (q) {
+      [gastos] = await db.query(
+        `
+        SELECT
+          g.id,
+          g.codigo,
+          g.fecha,
+          g.total,
+          g.estado,
+          g.motivo_rechazo,
+          g.tipo_gasto_id,
+          tg.nombre AS tipo_gasto,
+          p.nombre  AS proveedor,
+          s.nombre  AS sucursal,
+          g.concepto_pago,
+          g.descripcion,
+          g.subtotal,
+          g.impuesto,
+          g.moneda,
+          g.porcentaje_iva,
+          g.tasa_cambio,
+          g.cotizacion_id,
+          g.documento
         FROM gastos g
-        LEFT JOIN proveedores p ON p.id = g.proveedor_id
-        LEFT JOIN sucursales  s ON s.id = g.sucursal_id
-        LEFT JOIN tipos_gasto tg ON tg.id = g.tipo_gasto_id
-      ${
-        q
-          ? `WHERE g.codigo        LIKE ? OR
-            p.nombre        LIKE ? OR
-            g.concepto_pago LIKE ?`
-          : ""
-      }
-      ORDER BY g.fecha DESC, g.id DESC
-      LIMIT ${limit} OFFSET ${offset}
-      `,
-      q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [],
-    );
-    cacheMemoria.set(claveCache, { data: gastos, total, page, limit });
-    res.json({ data: gastos, total, page, limit });
+        LEFT JOIN proveedores  p  ON p.id  = g.proveedor_id
+        LEFT JOIN sucursales   s  ON s.id  = g.sucursal_id
+        LEFT JOIN tipos_gasto  tg ON tg.id = g.tipo_gasto_id
+        WHERE (
+             g.codigo        LIKE ?
+          OR p.nombre        LIKE ?
+          OR g.concepto_pago LIKE ?
+        )
+        ${filtroSucursalSql}
+        ORDER BY g.fecha DESC, g.id DESC
+        LIMIT ${limit} OFFSET ${offset}
+        `,
+        [`%${q}%`, `%${q}%`, `%${q}%`, ...paramsSucursal],
+      );
+    } else {
+      [gastos] = await db.query(
+        `
+        SELECT
+          g.id,
+          g.codigo,
+          g.fecha,
+          g.total,
+          g.estado,
+          g.motivo_rechazo,
+          g.tipo_gasto_id,
+          tg.nombre AS tipo_gasto,
+          p.nombre  AS proveedor,
+          s.nombre  AS sucursal,
+          g.concepto_pago,
+          g.descripcion,
+          g.subtotal,
+          g.impuesto,
+          g.moneda,
+          g.porcentaje_iva,
+          g.tasa_cambio,
+          g.cotizacion_id,
+          g.documento
+        FROM gastos g
+        LEFT JOIN proveedores  p  ON p.id  = g.proveedor_id
+        LEFT JOIN sucursales   s  ON s.id  = g.sucursal_id
+        LEFT JOIN tipos_gasto  tg ON tg.id = g.tipo_gasto_id
+        WHERE 1=1
+        ${filtroSucursalSql}
+        ORDER BY g.fecha DESC, g.id DESC
+        LIMIT ${limit} OFFSET ${offset}
+        `,
+        [...paramsSucursal],
+      );
+    }
+
+    const respuesta = { data: gastos, total, page, limit };
+    cacheMemoria.set(claveCache, respuesta);
+
+    return res.json(respuesta);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error interno" });
+    return res.status(500).json({ message: "Error interno" });
   }
 };
 
 export const obtenerUrlComprobante = async (req, res) => {
-  const { id } = req.params;
-  const claveCache = `gasto_${id}`;
-  const enCache = cacheMemoria.get(claveCache);
+  try {
+    const { id } = req.params;
 
-  if (enCache) return res.json(enCache);
+    const scopeSucursal = obtenerScopeSucursalCache(req);
+    if (!scopeSucursal) {
+      return res
+        .status(403)
+        .json({ message: "Tu usuario no tiene sucursal asignada." });
+    }
 
-  // 1) Buscar la key que guardaste en la BD
-  const [[fila]] = await db.query(
-    "SELECT documento AS keyS3 FROM gastos WHERE id = ?",
-    [id],
-  );
+    const esAdmin = Number(req.user?.rol_id) === 1;
+    const whereSucursalSql =
+      esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+    const paramsSucursal =
+      esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
-  if (!fila || !fila.keyS3) {
+    const claveCache = `gastoComprobante_${scopeSucursal}_${id}`;
+    const enCache = cacheMemoria.get(claveCache);
+    if (enCache) return res.json(enCache);
+
+    const [[fila]] = await db.query(
+      `SELECT documento AS keyS3
+         FROM gastos
+        WHERE id = ? ${whereSucursalSql}
+        LIMIT 1`,
+      [id, ...paramsSucursal],
+    );
+
+    if (!fila || !fila.keyS3) {
+      return res
+        .status(404)
+        .json({ message: "Este gasto no tiene un comprobante adjunto" });
+    }
+
+    const url = await generarUrlPrefirmadaLectura(fila.keyS3, 300);
+    const respuesta = { url };
+
+    cacheMemoria.set(claveCache, respuesta);
+    return res.json(respuesta);
+  } catch (error) {
+    console.error("Error al obtener URL de comprobante:", error);
     return res
-      .status(404)
-      .json({ message: "Este gasto no tiene un comprobante adjunto" });
+      .status(500)
+      .json({ message: "Error al obtener el comprobante del gasto." });
   }
-  const url = await generarUrlPrefirmadaLectura(fila.keyS3, 300);
-  const respuesta = { url };
-  cacheMemoria.set(claveCache, respuesta);
-
-  res.json(respuesta);
 };
 
-// ──────────────────────────────────────────────────────────────
-// FUNCIÓN 1: updateGasto (solo cambios relacionados a eventos)
-// ──────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// FUNCIÃ“N 1: updateGasto (solo cambios relacionados a eventos)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const updateGasto = async (req, res) => {
   const { id } = req.params;
   let claveS3Nueva = null;
   const conexion = await db.getConnection();
 
+  // 0) Validar sucursal (admin ve todo; usuario solo su sucursal)
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
   try {
     await conexion.beginTransaction();
 
+    // 1) Cargar gasto existente (respetando sucursal)
     const [[gastoExistente]] = await conexion.query(
-      "SELECT * FROM gastos WHERE id = ?",
-      [id],
+      `SELECT * FROM gastos WHERE id = ? ${whereSucursalSql} LIMIT 1`,
+      [id, ...paramsSucursal],
     );
+
     if (!gastoExistente) {
       await conexion.rollback();
       return res.status(404).json({ message: "Gasto no encontrado" });
     }
+
     if (gastoExistente.estado === "aprobado") {
       await conexion.rollback();
       return res
@@ -139,13 +261,15 @@ export const updateGasto = async (req, res) => {
       subtotal,
       porcentaje_iva,
       fecha,
-      sucursal_id,
       cotizacion_id,
       moneda,
       tasa_cambio,
       estado,
       motivo_rechazo,
     } = req.body;
+
+    // 2) Forzar sucursal para no-admin (no puede â€œmoverâ€ gastos)
+    const sucursalIdFinal = Number(gastoExistente.sucursal_id);
 
     const subtotalNum = parseFloat(subtotal);
     const ivaNum = parseFloat(porcentaje_iva);
@@ -157,10 +281,12 @@ export const updateGasto = async (req, res) => {
       gastoExistente.estado === "rechazado"
         ? "pendiente"
         : gastoExistente.estado;
+
     if (estado && estadosPermitidos.includes(estado)) nuevoEstado = estado;
 
     let motivoRechazoFinal =
       nuevoEstado === "rechazado" ? motivo_rechazo : null;
+
     if (
       nuevoEstado === "rechazado" &&
       (!motivo_rechazo || motivo_rechazo.trim() === "")
@@ -171,26 +297,42 @@ export const updateGasto = async (req, res) => {
         .json({ message: "Debes indicar el motivo del rechazo." });
     }
 
-    let tasaCambioFinal =
-      moneda === "VES"
-        ? isNaN(parseFloat(tasa_cambio))
-          ? (await conexion.rollback(),
-            res
-              .status(400)
-              .json({ message: "Tasa de cambio inválida para VES." }))
-          : tasa_cambio
-        : null;
-
+    let tasaCambioFinal = null;
+    if (moneda === "VES") {
+      const tasaCambioNumerica = parseFloat(tasa_cambio);
+      if (Number.isNaN(tasaCambioNumerica)) {
+        await conexion.rollback();
+        return res
+          .status(400)
+          .json({ message: "Tasa de cambio invalida para VES." });
+      }
+      tasaCambioFinal = tasaCambioNumerica;
+    }
     const documentoNuevo = req.file ? req.file.key : undefined;
 
+    // 3) Update cabecera (respetando sucursal por WHERE y preservando sucursal_id)
     await conexion.query(
       `
       UPDATE gastos SET 
-        proveedor_id = ?, concepto_pago = ?, tipo_gasto_id = ?, descripcion = ?, subtotal = ?, 
-        porcentaje_iva = ?, impuesto = ?, total = ?, fecha = ?, sucursal_id = ?, cotizacion_id = ?, 
-        moneda = ?, tasa_cambio = ?, estado = ?, motivo_rechazo = ?, 
-        ${documentoNuevo ? "documento = ?," : ""} updated_at = NOW()
-      WHERE id = ?`,
+        proveedor_id = ?,
+        concepto_pago = ?,
+        tipo_gasto_id = ?,
+        descripcion = ?,
+        subtotal = ?,
+        porcentaje_iva = ?,
+        impuesto = ?,
+        total = ?,
+        fecha = ?,
+        sucursal_id = ?,
+        cotizacion_id = ?,
+        moneda = ?,
+        tasa_cambio = ?,
+        estado = ?,
+        motivo_rechazo = ?,
+        ${documentoNuevo ? "documento = ?," : ""}
+        updated_at = NOW()
+      WHERE id = ? ${whereSucursalSql}
+      `,
       [
         proveedor_id,
         concepto_pago,
@@ -201,7 +343,7 @@ export const updateGasto = async (req, res) => {
         impuesto,
         total,
         fecha,
-        sucursal_id,
+        sucursalIdFinal,
         cotizacion_id,
         moneda,
         tasaCambioFinal,
@@ -209,14 +351,15 @@ export const updateGasto = async (req, res) => {
         motivoRechazoFinal,
         ...(documentoNuevo ? [documentoNuevo] : []),
         id,
+        ...paramsSucursal,
       ],
     );
 
+    // 4) Manejo de archivo (igual que ya lo tienes)
     if (documentoNuevo) {
       claveS3Nueva = documentoNuevo;
       const huboReemplazo = Boolean(gastoExistente.documento);
 
-      // 1) Si había archivo anterior: moverlo a papelera y registrar eliminacionArchivo (motivo: sustitución)
       if (huboReemplazo) {
         const rutaPapelera = await moverArchivoAPapelera(
           gastoExistente.documento,
@@ -255,7 +398,7 @@ export const updateGasto = async (req, res) => {
               req.ip || null,
               req.get("user-agent") || null,
               JSON.stringify({
-                motivo: "Sustitución de la factura al editar gasto",
+                motivo: "SustituciÃ³n de la factura al editar gasto",
                 nuevaRuta: rutaPapelera,
               }),
             ],
@@ -263,7 +406,6 @@ export const updateGasto = async (req, res) => {
         }
       }
 
-      // 2) Alta del nuevo archivo (grupo, versión, activo)
       const grupoArchivoId = await obtenerOcrearGrupoFactura(
         conexion,
         id,
@@ -350,16 +492,37 @@ export const updateGasto = async (req, res) => {
 
     await conexion.commit();
 
-    cacheMemoria.del(`gasto_${id}`);
-    for (const k of cacheMemoria.keys()) {
-      if (k.startsWith("gastos_")) cacheMemoria.del(k);
+    // 5) âœ… invalidar cache por sucursal real del gasto (antes vs despuÃ©s)
+    const sucursalIdAnterior = Number(gastoExistente.sucursal_id);
+    const sucursalIdNueva = Number(sucursalIdFinal);
+
+    const scopesAInvalidar = new Set();
+    if (!Number.isNaN(sucursalIdAnterior) && sucursalIdAnterior > 0) {
+      scopesAInvalidar.add(String(sucursalIdAnterior));
+    }
+    if (!Number.isNaN(sucursalIdNueva) && sucursalIdNueva > 0) {
+      scopesAInvalidar.add(String(sucursalIdNueva));
+    }
+
+    if (scopesAInvalidar.size === 0) {
+      invalidarCachePorPrefijos({
+        prefijos: ["gastos_", "gasto_", "gastoComprobante_"],
+      });
+    } else {
+      for (const scopeSucursalItem of scopesAInvalidar) {
+        invalidarCachePorPrefijos({
+          prefijos: ["gastos_", "gasto_", "gastoComprobante_"],
+          scopeSucursal: scopeSucursalItem,
+        });
+      }
     }
 
     const [[gastoActualizado]] = await conexion.query(
-      "SELECT * FROM gastos WHERE id = ?",
+      "SELECT * FROM gastos WHERE id = ? LIMIT 1",
       [id],
     );
-    const urlFacturaFirmada = gastoActualizado.documento
+
+    const urlFacturaFirmada = gastoActualizado?.documento
       ? await generarUrlPrefirmadaLectura(gastoActualizado.documento)
       : null;
 
@@ -392,30 +555,51 @@ export const updateGasto = async (req, res) => {
   }
 };
 
-// ──────────────────────────────────────────────────────────────
-// FUNCIÓN 2: deleteGasto (solo cambio de acción a eliminacionArchivo)
-// ──────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// FUNCIÃ“N 2: deleteGasto (solo cambio de acciÃ³n a eliminacionArchivo)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const deleteGasto = async (req, res) => {
   const { id } = req.params;
   const conexion = await db.getConnection();
+
+  // 0) Validar sucursal (admin ve todo; usuario solo su sucursal)
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   try {
     await conexion.beginTransaction();
 
     const [[gastoExistente]] = await conexion.query(
-      "SELECT estado, documento FROM gastos WHERE id = ?",
-      [id],
+      `SELECT estado, documento, sucursal_id
+         FROM gastos
+        WHERE id = ? ${whereSucursalSql}
+        LIMIT 1`,
+      [id, ...paramsSucursal],
     );
+
     if (!gastoExistente) {
       await conexion.rollback();
       return res.status(404).json({ message: "Gasto no encontrado" });
     }
+
     if (gastoExistente.estado === "aprobado") {
       await conexion.rollback();
       return res
         .status(403)
         .json({ message: "No puedes eliminar un gasto aprobado." });
     }
+
+    const sucursalIdGasto = Number(gastoExistente.sucursal_id);
 
     if (gastoExistente.documento) {
       const nuevaClave = await moverArchivoAPapelera(
@@ -452,7 +636,7 @@ export const deleteGasto = async (req, res) => {
             req.ip || null,
             req.get("user-agent") || null,
             JSON.stringify({
-              motivo: "Eliminación del gasto",
+              motivo: "EliminaciÃ³n del gasto",
               nuevaRuta: nuevaClave,
             }),
           ],
@@ -460,14 +644,22 @@ export const deleteGasto = async (req, res) => {
       }
     }
 
-    await conexion.query("DELETE FROM gastos WHERE id = ?", [id]);
+    await conexion.query(
+      `DELETE FROM gastos WHERE id = ? ${whereSucursalSql}`,
+      [id, ...paramsSucursal],
+    );
 
     await conexion.commit();
 
-    cacheMemoria.del(`gasto_${id}`);
-    for (const k of cacheMemoria.keys()) {
-      if (k.startsWith("gastos_")) cacheMemoria.del(k);
-    }
+    const scopeInvalidar =
+      !Number.isNaN(sucursalIdGasto) && sucursalIdGasto > 0
+        ? String(sucursalIdGasto)
+        : null;
+
+    invalidarCachePorPrefijos({
+      prefijos: ["gastos_", "gasto_", "gastoComprobante_"],
+      scopeSucursal: scopeInvalidar,
+    });
 
     return res.json({
       message: "Gasto eliminado y archivo movido a papelera correctamente.",
@@ -487,13 +679,23 @@ export const getGastoById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    /* -------- 1. HIT de caché -------- */
-    const claveCache = `gasto_${id}`;
+    const scopeSucursal = obtenerScopeSucursalCache(req);
+    if (!scopeSucursal) {
+      return res
+        .status(403)
+        .json({ message: "Tu usuario no tiene sucursal asignada." });
+    }
+
+    const esAdmin = Number(req.user?.rol_id) === 1;
+    const whereSucursalSql =
+      esAdmin && scopeSucursal === "todas" ? "" : " AND g.sucursal_id = ?";
+    const paramsSucursal =
+      esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+    const claveCache = `gasto_${scopeSucursal}_${id}`;
     const enCache = cacheMemoria.get(claveCache);
     if (enCache) return res.json(enCache);
-    /* --------------------------------- */
 
-    /* -------- 2. Consulta a la BD -------- */
     const [[gasto]] = await db.query(
       `
       SELECT 
@@ -513,32 +715,46 @@ export const getGastoById = async (req, res) => {
       LEFT JOIN sucursales   s  ON s.id  = g.sucursal_id
       LEFT JOIN cotizaciones c  ON c.id  = g.cotizacion_id
       LEFT JOIN tipos_gasto  tg ON tg.id = g.tipo_gasto_id
-      WHERE g.id = ?;
+      WHERE g.id = ? ${whereSucursalSql}
+      LIMIT 1;
       `,
-      [id],
+      [id, ...paramsSucursal],
     );
 
     if (!gasto) {
       return res.status(404).json({ message: "Gasto no encontrado" });
     }
-    /* ------------------------------------- */
 
-    /* -------- 3. Preparar datos extra -------- */
     const urlFacturaFirmada = gasto.documento
       ? await generarUrlPrefirmadaLectura(gasto.documento)
       : null;
 
+    // Opciones (tambiÃ©n restringidas):
     const [tiposGasto] = await db.query("SELECT id, nombre FROM tipos_gasto");
+
     const [proveedores] = await db.query(
       "SELECT id, nombre FROM proveedores WHERE estado = 'activo'",
     );
-    const [sucursales] = await db.query("SELECT id, nombre FROM sucursales");
-    const [cotizaciones] = await db.query(
-      "SELECT id, codigo_referencia AS codigo FROM cotizaciones",
-    );
-    /* ----------------------------------------- */
 
-    /* -------- 4. Construir y cachear respuesta -------- */
+    // Sucursales: admin ve todas; no-admin solo la suya
+    const [sucursales] =
+      esAdmin && scopeSucursal === "todas"
+        ? await db.query("SELECT id, nombre FROM sucursales")
+        : await db.query("SELECT id, nombre FROM sucursales WHERE id = ?", [
+            Number(scopeSucursal),
+          ]);
+
+    // Cotizaciones: admin ve todas; no-admin solo las de su sucursal
+    const whereCotSucursalSql =
+      esAdmin && scopeSucursal === "todas" ? "" : " WHERE sucursal_id = ?";
+    const paramsCotSucursal =
+      esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+    const [cotizaciones] = await db.query(
+      `SELECT id, codigo_referencia AS codigo FROM cotizaciones${whereCotSucursalSql} ORDER BY id DESC`,
+      [...paramsCotSucursal],
+    );
+
     const respuesta = {
       gasto: {
         ...gasto,
@@ -552,14 +768,11 @@ export const getGastoById = async (req, res) => {
       },
     };
 
-    cacheMemoria.set(claveCache, respuesta); // TTL std: 300 s
-    /* ----------------------------------------------- */
-
-    /* -------- 5. Enviar al cliente -------- */
-    res.json(respuesta);
+    cacheMemoria.set(claveCache, respuesta);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error al obtener gasto por ID:", error);
-    res.status(500).json({ message: "Error al obtener gasto" });
+    return res.status(500).json({ message: "Error al obtener gasto" });
   }
 };
 
@@ -587,64 +800,94 @@ export const getProveedores = async (req, res) => {
 
 export const actualizarEstadoGasto = async (req, res) => {
   try {
-    const { id } = req.params; // gasto_id
+    const { id } = req.params;
     const { estado, motivo_rechazo } = req.body;
 
-    /* Actualizar estado y motivo (si aplica) */
+    // 0) Validar sucursal (admin ve todo; usuario solo su sucursal)
+    const scopeSucursal = obtenerScopeSucursalCache(req);
+    if (!scopeSucursal) {
+      return res
+        .status(403)
+        .json({ message: "Tu usuario no tiene sucursal asignada." });
+    }
+
+    const esAdmin = Number(req.user?.rol_id) === 1;
+    const whereSucursalSql =
+      esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+    const paramsSucursal =
+      esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+    // 1) Verificar que exista y obtener sucursal_id real (para invalidaciÃ³n)
+    const [[gastoRow]] = await db.query(
+      `SELECT id, sucursal_id
+         FROM gastos
+        WHERE id = ? ${whereSucursalSql}
+        LIMIT 1`,
+      [id, ...paramsSucursal],
+    );
+
+    if (!gastoRow) {
+      return res.status(404).json({ message: "Gasto no encontrado" });
+    }
+
+    const sucursalIdGasto = Number(gastoRow.sucursal_id);
+
+    // 2) Actualizar estado (respetando sucursal)
     await db.query(
       `
       UPDATE gastos
-         SET estado        = ?,
+         SET estado         = ?,
              motivo_rechazo = ?,
              updated_at     = NOW()
-       WHERE id = ?
+       WHERE id = ? ${whereSucursalSql}
       `,
-      [estado, motivo_rechazo || null, id],
+      [estado, motivo_rechazo || null, id, ...paramsSucursal],
     );
 
-    /* 1.1 Invalidar caché (detalle + listados) */
-    cacheMemoria.del(`gasto_${id}`);
-    for (const k of cacheMemoria.keys()) {
-      if (k.startsWith("gastos_")) cacheMemoria.del(k);
-    }
+    // 3) Invalidar cache por sucursal del gasto
+    const scopeInvalidar =
+      !Number.isNaN(sucursalIdGasto) && sucursalIdGasto > 0
+        ? String(sucursalIdGasto)
+        : null;
 
-    /* Si el nuevo estado es 'aprobado', crear solicitud de pago */
+    invalidarCachePorPrefijos({
+      prefijos: ["gastos_", "gasto_", "gastoComprobante_"],
+      scopeSucursal: scopeInvalidar,
+    });
+
+    // 4) Si es aprobado, crear solicitud de pago (sin duplicar)
     if (estado === "aprobado") {
-      /* 2.1  Evitar duplicados */
       const [yaExiste] = await db.query(
         "SELECT id FROM solicitudes_pago WHERE gasto_id = ?",
         [id],
       );
+
       if (yaExiste.length === 0) {
-        /* 2.2  Datos necesarios del gasto */
         const [[gasto]] = await db.query(
           `
           SELECT
             creadoPor      AS usuario_solicita_id,
+            sucursal_id,
             proveedor_id,
             concepto_pago,
-            total           AS monto_total,
+            total          AS monto_total,
             moneda,
             tasa_cambio
           FROM gastos
           WHERE id = ?
+          LIMIT 1
           `,
           [id],
         );
 
-        /* 2.3  Generar código consecutivo SP-00001 */
-        const [[{ maxId }]] = await db.query(
-          "SELECT MAX(id) AS maxId FROM solicitudes_pago",
-        );
-        const nextId = (maxId || 0) + 1;
-        const codigo = `SP-${String(nextId).padStart(5, "0")}`;
+        const codigoTemporal = `SP-TMP-${Date.now()}-${id}`;
 
-        /* 2.4  Insertar la nueva solicitud de pago */
-        await db.query(
+        const [resultadoInsercion] = await db.query(
           `
           INSERT INTO solicitudes_pago (
             codigo,
             gasto_id,
+            sucursal_id,
             usuario_solicita_id,
             usuario_revisa_id,
             proveedor_id,
@@ -658,30 +901,51 @@ export const actualizarEstadoGasto = async (req, res) => {
             moneda,
             tasa_cambio
           )
-          VALUES (?,?,?,?,?,?,?,?,?,NOW(),NOW(),NOW(),?,?)
+          VALUES (?,?,?,?,?,?,?,?,?,?,NOW(),NOW(),NOW(),?,?)
           `,
           [
-            codigo,
+            codigoTemporal,
             id,
+            gasto.sucursal_id,
             gasto.usuario_solicita_id,
-            req.session.usuario.id, // usuario que aprueba
+            req.user?.id ?? null,
             gasto.proveedor_id,
             gasto.concepto_pago,
             gasto.monto_total,
-            0, // monto_pagado
+            0,
             "por_pagar",
             gasto.moneda,
             gasto.tasa_cambio,
           ],
         );
+
+        const solicitudPagoId = resultadoInsercion.insertId;
+        const codigoFinal = `SP-${String(solicitudPagoId).padStart(5, "0")}`;
+
+        await db.query(
+          "UPDATE solicitudes_pago SET codigo = ? WHERE id = ?",
+          [codigoFinal, solicitudPagoId],
+        );
+
+        invalidarCachePorPrefijos({
+          prefijos: [
+            "solicitudesPago_",
+            "solicitudPago_",
+            "ordenesPagoSolicitud_",
+          ],
+          scopeSucursal:
+            !Number.isNaN(Number(gasto.sucursal_id)) &&
+            Number(gasto.sucursal_id) > 0
+              ? String(Number(gasto.sucursal_id))
+              : null,
+        });
       }
     }
 
-    /*  Respuesta */
-    res.json({ message: "Estado de gasto actualizado correctamente" });
+    return res.json({ message: "Estado de gasto actualizado correctamente" });
   } catch (error) {
     console.error("Error al actualizar estado del gasto:", error);
-    res
+    return res
       .status(500)
       .json({ message: "Error interno al actualizar estado del gasto" });
   }

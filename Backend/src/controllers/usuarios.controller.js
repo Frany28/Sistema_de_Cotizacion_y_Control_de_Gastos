@@ -8,8 +8,15 @@ import {
   moverArchivoAPapelera,
 } from "../utils/s3.js";
 import { obtenerOcrearGrupoFirma } from "../utils/gruposArchivos.js";
+import cacheMemoria, {
+  invalidarCachePorPrefijos,
+} from "../utils/cacheMemoria.js";
 
 const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+const limpiarCacheUsuarios = () =>
+  invalidarCachePorPrefijos({
+    prefijos: ["usuarios_", "perfil_", "archivos_"],
+  });
 
 const obtenerContextoAcceso = (req) => {
   const rolId = Number(req.user?.rolId ?? req.user?.rol_id);
@@ -309,6 +316,7 @@ export const crearUsuario = async (req, res) => {
     }
 
     await conexion.commit();
+    limpiarCacheUsuarios();
     return res
       .status(201)
       .json({ id: nuevoUsuarioId, firma: firmaKey || null });
@@ -714,6 +722,7 @@ export const actualizarUsuario = async (req, res) => {
     }
 
     await conexion.commit();
+    limpiarCacheUsuarios();
     return res.json({ id, firma: firmaKey || null });
   } catch (error) {
     await conexion.rollback();
@@ -751,6 +760,10 @@ export const obtenerUsuarios = async (req, res) => {
 
     const whereSucursal = contexto.esAdmin ? "" : "WHERE u.sucursal_id = ?";
     const params = contexto.esAdmin ? [] : [contexto.sucursalId];
+    const scope = contexto.esAdmin ? "todas" : String(contexto.sucursalId);
+    const claveCache = `usuarios_${scope}`;
+    const hit = cacheMemoria.get(claveCache);
+    if (hit) return res.json(hit);
 
     const [filasUsuarios] = await db.query(
       `
@@ -779,6 +792,7 @@ export const obtenerUsuarios = async (req, res) => {
       params,
     );
 
+    cacheMemoria.set(claveCache, filasUsuarios, 180);
     return res.json(filasUsuarios);
   } catch (error) {
     const status = error?.statusCode || 500;
@@ -919,6 +933,7 @@ export const eliminarUsuario = async (req, res) => {
     await conexion.query(`DELETE FROM usuarios WHERE id = ?`, [id]);
 
     await conexion.commit();
+    limpiarCacheUsuarios();
     return res.json({
       message: "Usuario eliminado y firmas movidas a papelera correctamente.",
     });

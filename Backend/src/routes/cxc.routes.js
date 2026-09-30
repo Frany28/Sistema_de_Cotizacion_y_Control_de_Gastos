@@ -30,9 +30,19 @@ router.get(
   listaCuentasPorCobrar
 );
 
-router.get("/clientes", clientesConCXC);
+router.get(
+  "/clientes",
+  autenticarUsuario,
+  verificarPermiso("verCuentasPorCobrar"),
+  clientesConCXC
+);
 
-router.get("/totales/:cliente_id", getTotalesPorCliente);
+router.get(
+  "/totales/:cliente_id",
+  autenticarUsuario,
+  verificarPermiso("verCuentasPorCobrar"),
+  getTotalesPorCliente
+);
 
 router.get(
   "/:cuenta_id/saldo",

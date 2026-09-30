@@ -7,7 +7,6 @@ import CotizacionSelector from "../components/ComponentesGasto/CotizacionSelecto
 import ResumenGasto from "../components/ComponentesGasto/ResumenGasto";
 
 export default function AgregarGasto({
-  sucursales = [],
   proveedores = [],
   setProveedores,
   cotizaciones = [],
@@ -20,7 +19,6 @@ export default function AgregarGasto({
     cotizacion_id: null,
     concepto_pago: "",
     fecha: new Date().toISOString().split("T")[0],
-    sucursal_id: "",
     descripcion: "",
     subtotal: "",
     porcentaje_iva: 0,
@@ -108,7 +106,6 @@ export default function AgregarGasto({
         <DatosGeneralesGasto
           gasto={gasto}
           setGasto={setGasto}
-          sucursales={sucursales}
         />
 
         {/* 5. Datos Monetarios (subtotal, IVA, total) */}

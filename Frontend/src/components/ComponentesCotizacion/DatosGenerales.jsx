@@ -1,5 +1,7 @@
 import React from "react";
 
+const OPERACIONES_SUGERIDAS = ["Importación", "Exportación"];
+
 export default function DatosGeneralesCotizacion({
   datos,
   onChange,
@@ -35,7 +37,6 @@ export default function DatosGeneralesCotizacion({
       {mostrarCamposOperacion && (
         <>
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Tipo de Operación */}
             <div>
               <label
                 htmlFor="operacion"
@@ -43,20 +44,23 @@ export default function DatosGeneralesCotizacion({
               >
                 Tipo de Operación
               </label>
-              <select
+              <input
+                type="text"
                 id="operacion"
+                list="operaciones-sugeridas-cotizacion"
                 name="operacion"
                 value={datos.operacion || ""}
                 onChange={handleInputChange}
-                className="cursor-pointer w-full p-2 rounded-md bg-gray-700 border border-gray-600 text-white"
-              >
-                <option value="">Seleccione tipo de operación</option>
-                <option value="importacion">Importación</option>
-                <option value="exportacion">Exportación</option>
-              </select>
+                placeholder="Escriba o seleccione un tipo de operación"
+                className="w-full p-2 rounded-md bg-gray-700 border border-gray-600 text-white"
+              />
+              <datalist id="operaciones-sugeridas-cotizacion">
+                {OPERACIONES_SUGERIDAS.map((operacion) => (
+                  <option key={operacion} value={operacion} />
+                ))}
+              </datalist>
             </div>
 
-            {/* Puerto */}
             <div>
               <label
                 htmlFor="puerto"
@@ -77,7 +81,6 @@ export default function DatosGeneralesCotizacion({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* BL */}
             <div>
               <label htmlFor="bl" className="block text-sm font-medium mb-1">
                 BL
@@ -93,7 +96,6 @@ export default function DatosGeneralesCotizacion({
               />
             </div>
 
-            {/* Mercancía */}
             <div>
               <label
                 htmlFor="mercancia"
@@ -112,7 +114,6 @@ export default function DatosGeneralesCotizacion({
               />
             </div>
 
-            {/* Contenedor */}
             <div>
               <label
                 htmlFor="contenedor"
@@ -134,7 +135,6 @@ export default function DatosGeneralesCotizacion({
         </>
       )}
 
-      {/* Observaciones (SIEMPRE) */}
       <div className="pt-4">
         <label
           htmlFor="observaciones"

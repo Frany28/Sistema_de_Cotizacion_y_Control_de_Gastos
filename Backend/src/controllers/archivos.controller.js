@@ -9,6 +9,7 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
+import cacheMemoria from "../utils/cacheMemoria.js";
 
 // Roles autorizados
 const ROL_ADMIN = 1;
@@ -20,6 +21,14 @@ const chunk = (array, size = 1000) => {
     resultado.push(array.slice(i, i + size));
   }
   return resultado;
+};
+
+const limpiarCacheArchivos = () => {
+  for (const clave of cacheMemoria.keys()) {
+    if (clave.startsWith("archivos_") || clave.startsWith("perfil_")) {
+      cacheMemoria.del(clave);
+    }
+  }
 };
 
 export async function moverObjetoEnS3({ origen, destino }) {
@@ -200,6 +209,7 @@ export const sustituirArchivo = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheArchivos();
     return res.json({ message: "Archivo sustituido correctamente." });
   } catch (error) {
     await conexion.rollback();
@@ -258,6 +268,12 @@ export const listarArchivos = async (req, res) => {
   const limit = Number(req.query.limit) || 10;
   const offset = (page - 1) * limit;
   const search = req.query.search ? `%${req.query.search.trim()}%` : null;
+  const scope = [ROL_ADMIN, ROL_SUPERVISOR].includes(rolId)
+    ? "global"
+    : String(creadoPor);
+  const claveCache = `archivos_lista_${scope}_${page}_${limit}_${req.query.search?.trim() || ""}`;
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
 
   try {
     let where = "WHERE a.estado = 'activo'";
@@ -295,7 +311,9 @@ export const listarArchivos = async (req, res) => {
       [...params, limit, offset],
     );
 
-    return res.json({ data, total, page, limit });
+    const respuesta = { data, total, page, limit };
+    cacheMemoria.set(claveCache, respuesta, 120);
+    return res.json(respuesta);
   } catch (error) {
     console.error(error);
     return res
@@ -355,6 +373,7 @@ export const eliminarArchivo = async (req, res) => {
       ],
     );
 
+    limpiarCacheArchivos();
     return res.json({
       message: "Archivo eliminado correctamente (soft delete).",
     });
@@ -492,6 +511,7 @@ export const restaurarArchivo = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheArchivos();
     return res.json({ mensaje: "Archivo restaurado correctamente." });
   } catch (error) {
     await conexion.rollback();
@@ -760,6 +780,7 @@ export const restaurarVersion = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheArchivos();
     return res.json({ message: "Versión restaurada correctamente." });
   } catch (error) {
     await conexion.rollback();
@@ -819,6 +840,7 @@ export const eliminarDefinitivamente = async (req, res) => {
       ],
     );
 
+    limpiarCacheArchivos();
     return res.json({ message: "Eliminado permanentemente del sistema y S3." });
   } catch (error) {
     console.error(error);
@@ -832,6 +854,10 @@ export const obtenerArbolArchivos = async (req, res) => {
   const usuarioId = req.user.id;
   const rolId = req.user.rol_id;
   const esVistaCompleta = [ROL_ADMIN, ROL_SUPERVISOR].includes(rolId);
+  const scope = esVistaCompleta ? "global" : String(usuarioId);
+  const claveCache = `archivos_arbol_${scope}`;
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
 
   const normalizarRutaBd = (ruta) => {
     if (!ruta) return null;
@@ -998,6 +1024,7 @@ export const obtenerArbolArchivos = async (req, res) => {
 
     ordenarNodos(raiz);
 
+    cacheMemoria.set(claveCache, raiz, 120);
     return res.json(raiz);
   } catch (error) {
     console.error(error);
@@ -1011,6 +1038,12 @@ export const obtenerDetallesArchivo = async (req, res) => {
   const archivoId = Number(req.params.id);
   const creadoPor = req.user.id;
   const rolId = req.user.rol_id;
+  const scope = [ROL_ADMIN, ROL_SUPERVISOR].includes(rolId)
+    ? "global"
+    : String(creadoPor);
+  const claveCache = `archivos_detalle_${scope}_${archivoId}`;
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
 
   const conexion = await db.getConnection();
 
@@ -1048,7 +1081,7 @@ export const obtenerDetallesArchivo = async (req, res) => {
     }
 
     await conexion.release();
-    return res.json({
+    const respuesta = {
       id: archivo.id,
       nombreOriginal: archivo.nombreOriginal,
       extension: archivo.extension,
@@ -1059,7 +1092,9 @@ export const obtenerDetallesArchivo = async (req, res) => {
       actualizadoEn: archivo.actualizadoEn,
       nombreUsuario: archivo.nombreUsuario,
       grupoArchivoId: archivo.grupoArchivoId,
-    });
+    };
+    cacheMemoria.set(claveCache, respuesta, 120);
+    return res.json(respuesta);
   } catch (error) {
     await conexion.release();
     console.error("Error en obtenerDetallesArchivo:", error);
@@ -1073,6 +1108,12 @@ export const contarVersionesArchivo = async (req, res) => {
   const archivoId = Number(req.params.id);
   const creadoPor = req.user.id;
   const rolId = req.user.rol_id;
+  const scope = [ROL_ADMIN, ROL_SUPERVISOR].includes(rolId)
+    ? "global"
+    : String(creadoPor);
+  const claveCache = `archivos_total_versiones_${scope}_${archivoId}`;
+  const hit = cacheMemoria.get(claveCache);
+  if (hit) return res.json(hit);
 
   try {
     // Obtener datos del archivo
@@ -1095,7 +1136,9 @@ export const contarVersionesArchivo = async (req, res) => {
       return res.status(403).json({ message: "Acceso denegado." });
     }
 
-    return res.json({ totalVersiones: archivo.numeroVersion });
+    const respuesta = { totalVersiones: archivo.numeroVersion };
+    cacheMemoria.set(claveCache, respuesta, 120);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error en contarVersionesArchivo:", error);
     return res.status(500).json({
@@ -1283,6 +1326,7 @@ export const eliminarDefinitivoArchivo = async (req, res) => {
     );
 
     await cx.commit();
+    limpiarCacheArchivos();
     res.json({ message: "Archivo purgado y auditado correctamente." });
   } catch (e) {
     await cx.rollback();
@@ -1397,6 +1441,7 @@ export const purgarPapelera = async (req, res) => {
     );
 
     await cx.commit();
+    limpiarCacheArchivos();
     res.json({
       mensaje: `Se vació la papelera. ${archivoIds.length} archivo(s) eliminados permanentemente.`,
     });
@@ -1499,6 +1544,7 @@ export const subirArchivoRepositorio = async (req, res) => {
       ],
     );
 
+    limpiarCacheArchivos();
     return res.json({
       mensaje: "Archivo subido correctamente.",
       archivoId: resultado.insertId,

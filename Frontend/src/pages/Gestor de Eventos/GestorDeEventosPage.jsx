@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import GenerarReporte from "../../components/ComponenteGestorEventos/GenerarReporte";
 import ModalOpcionesReporte from "../../components/ComponenteGestorEventos/ModalOpcionesReporte";
 import TarjetaArchivosSubidos from "../../components/ComponenteGestorEventos/tarjetas/TarjetaArchivosSubidos";
@@ -8,8 +8,8 @@ import TarjetaArchivosReemplazados from "../../components/ComponenteGestorEvento
 import GraficoTendenciasActividad from "../../components/ComponenteGestorEventos/GraficoTendenciasActividad";
 import ActividadRecienteArchivos from "../../components/ComponenteGestorEventos/ActividadRecienteArchivos";
 import { descargarReporteEventosPdf } from "../../services/eventosArchivosApi";
+import { verificarPermisoFront } from "../../../utils/verificarPermisoFront";
 
-// clases del grid (camelCase y en español)
 const claseGridTarjetas = `
   grid
   grid-cols-[repeat(auto-fit,minmax(220px,1fr))]
@@ -19,8 +19,43 @@ const claseGridTarjetas = `
 `;
 
 function GestorDeEventosPage() {
-  // ✅ Estado que faltaba: controla la visibilidad del modal
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [verificandoAcceso, setVerificandoAcceso] = useState(true);
+  const [puedeVerGestorEventos, setPuedeVerGestorEventos] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+
+    const verificarAcceso = async () => {
+      try {
+        const usuario =
+          JSON.parse(localStorage.getItem("usuario")) ||
+          JSON.parse(sessionStorage.getItem("usuario"));
+
+        const rolId = usuario?.rol_id ?? usuario?.rolId;
+        const rolSlug = (usuario?.rolSlug || usuario?.rol || "")
+          .toString()
+          .toLowerCase();
+        const esAdminOSupervisor =
+          rolId === 1 ||
+          rolId === 2 ||
+          rolSlug === "admin" ||
+          rolSlug === "supervisor";
+
+        const tienePermiso = await verificarPermisoFront("verEventosArchivos");
+
+        if (!activo) return;
+        setPuedeVerGestorEventos(esAdminOSupervisor && tienePermiso);
+      } finally {
+        if (activo) setVerificandoAcceso(false);
+      }
+    };
+
+    verificarAcceso();
+    return () => {
+      activo = false;
+    };
+  }, []);
 
   const abrirModal = () => {
     setMostrarModal(true);
@@ -47,19 +82,36 @@ function GestorDeEventosPage() {
     }
   };
 
+  if (verificandoAcceso) {
+    return (
+      <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-6 lg:px-8 pt-8">
+        <div className="rounded-xl border border-gray-700 bg-gray-800 p-6 text-gray-300">
+          Verificando permisos del Gestor de Eventos...
+        </div>
+      </div>
+    );
+  }
+
+  if (!puedeVerGestorEventos) {
+    return (
+      <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-6 lg:px-8 pt-8">
+        <div className="rounded-xl border border-red-800 bg-red-950/40 p-6 text-red-200">
+          No tienes permiso para acceder al Gestor de Eventos.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pt-5">
-      {/* Encabezado con botón para generar reporte */}
       <GenerarReporte onGenerarReporte={abrirModal} />
 
-      {/* Modal de opciones para el reporte */}
       <ModalOpcionesReporte
         visible={mostrarModal}
         onClose={cerrarModal}
         onConfirmar={manejarConfirmar}
       />
 
-      {/* GRID de tarjetas - margen inferior para no chocar con Tendencias */}
       <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-6 lg:px-8 mt-6 mb-8">
         <section className={claseGridTarjetas}>
           <div className="h-full">
@@ -77,12 +129,10 @@ function GestorDeEventosPage() {
         </section>
       </div>
 
-      {/* Tendencias de actividad */}
       <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-6 lg:px-8">
         <GraficoTendenciasActividad alturaPx={420} />
       </div>
 
-      {/* Actividad reciente */}
       <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-6 lg:px-8 md:pt-5">
         <ActividadRecienteArchivos />
       </div>

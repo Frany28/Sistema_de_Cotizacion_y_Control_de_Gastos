@@ -1,6 +1,7 @@
 import db from "../config/database.js";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { s3 } from "../utils/s3.js";
+import cacheMemoria from "../utils/cacheMemoria.js";
 
 // Roles autorizados (igual estilo que archivos.controller.js)
 const rolAdmin = 1;
@@ -8,6 +9,14 @@ const rolSupervisor = 2;
 
 const esRolAdminOSupervisor = (rolId) =>
   [rolAdmin, rolSupervisor].includes(Number(rolId));
+
+const limpiarCacheCarpetas = () => {
+  for (const clave of cacheMemoria.keys()) {
+    if (clave.startsWith("carpetas_") || clave.startsWith("archivos_")) {
+      cacheMemoria.del(clave);
+    }
+  }
+};
 
 const normalizarNombreCarpeta = (texto) => String(texto || "").trim();
 
@@ -157,6 +166,7 @@ export const crearCarpeta = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheCarpetas();
 
     return res.status(201).json({
       message: "Carpeta creada.",
@@ -178,6 +188,9 @@ export const listarCarpetas = async (req, res) => {
 
   try {
     const estado = req.query.estado || "activa";
+    const claveCache = `carpetas_${estado}`;
+    const hit = cacheMemoria.get(claveCache);
+    if (hit) return res.json(hit);
 
     if (!["activa", "papelera", "borrado"].includes(estado)) {
       return res.status(400).json({ message: "Estado inválido." });
@@ -192,7 +205,9 @@ export const listarCarpetas = async (req, res) => {
       [estado],
     );
 
-    return res.json({ carpetas });
+    const respuesta = { carpetas };
+    cacheMemoria.set(claveCache, respuesta, 180);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error listando carpetas:", error);
     return res.status(500).json({ message: "Error listando carpetas." });
@@ -209,6 +224,9 @@ export const obtenerCarpetaPorId = async (req, res) => {
 
   try {
     const carpetaId = Number(req.params.id);
+    const claveCache = `carpeta_${carpetaId}`;
+    const hit = cacheMemoria.get(claveCache);
+    if (hit) return res.json(hit);
 
     const [[carpeta]] = await conexion.query(
       `SELECT id, nombre, padreId, rutaVirtual, estado, creadoPor, creadoEn, actualizadoEn,
@@ -222,7 +240,9 @@ export const obtenerCarpetaPorId = async (req, res) => {
       return res.status(404).json({ message: "Carpeta no encontrada." });
     }
 
-    return res.json({ carpeta });
+    const respuesta = { carpeta };
+    cacheMemoria.set(claveCache, respuesta, 180);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error obteniendo carpeta:", error);
     return res.status(500).json({ message: "Error obteniendo carpeta." });
@@ -391,6 +411,7 @@ export const renombrarCarpeta = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheCarpetas();
     return res.json({ message: "Carpeta renombrada.", rutaVirtual: rutaNueva });
   } catch (error) {
     await conexion.rollback();
@@ -515,6 +536,7 @@ export const moverCarpeta = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheCarpetas();
     return res.json({ message: "Carpeta movida.", rutaVirtual: rutaNueva });
   } catch (error) {
     await conexion.rollback();
@@ -573,6 +595,7 @@ export const enviarCarpetaAPapelera = async (req, res) => {
     // NOTA: aquí luego agregamos el manejo de archivos (BD + S3) según tu flujo actual.
 
     await conexion.commit();
+    limpiarCacheCarpetas();
     return res.json({ message: "Carpeta enviada a papelera." });
   } catch (error) {
     await conexion.rollback();
@@ -663,6 +686,7 @@ export const restaurarCarpeta = async (req, res) => {
     // NOTA: aquí luego agregamos restauración de archivos (BD + S3) cuando exista el vínculo.
 
     await conexion.commit();
+    limpiarCacheCarpetas();
     return res.json({ message: "Carpeta restaurada.", rutaVirtual: rutaNueva });
   } catch (error) {
     await conexion.rollback();
@@ -732,6 +756,7 @@ export const borrarDefinitivoCarpeta = async (req, res) => {
     );
 
     await conexion.commit();
+    limpiarCacheCarpetas();
     return res.json({ message: "Carpeta borrada definitivamente." });
   } catch (error) {
     await conexion.rollback();

@@ -1,7 +1,10 @@
 import db from "../config/database.js";
 import { s3 } from "../utils/s3.js";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import cacheMemoria from "../utils/cacheMemoria.js";
+import cacheMemoria, {
+  obtenerScopeSucursalCache,
+  invalidarCachePorPrefijos,
+} from "../utils/cacheMemoria.js";
 
 /* ========================================================================== */
 /* REGISTRAR ABONO                                                            */
@@ -12,6 +15,19 @@ export const registrarAbono = async (req, res) => {
     return res.status(400).json({ message: "cuenta_id requerido en la URL" });
   }
 
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
   const conexion = await db.getConnection();
 
   try {
@@ -21,9 +37,9 @@ export const registrarAbono = async (req, res) => {
     const [[cuentaRow]] = await conexion.query(
       `SELECT cliente_id, sucursal_id, moneda, tasa_cambio
          FROM cuentas_por_cobrar
-        WHERE id = ?
+        WHERE id = ?${whereSucursalSql}
         FOR UPDATE`,
-      [cuentaId],
+      [cuentaId, ...paramsSucursal],
     );
 
     if (!cuentaRow) {
@@ -210,11 +226,15 @@ export const registrarAbono = async (req, res) => {
     );
 
     // 9) Cache
-    cacheMemoria.del(`saldo_${cuentaId}`);
-    cacheMemoria.del(`totales_${clienteId}`);
-    for (const k of cacheMemoria.keys()) {
-      if (k.startsWith(`cxc_${clienteId}_`)) cacheMemoria.del(k);
-    }
+    const scopeInvalidar =
+      !Number.isNaN(Number(sucursalIdCuenta)) && Number(sucursalIdCuenta) > 0
+        ? String(Number(sucursalIdCuenta))
+        : null;
+
+    invalidarCachePorPrefijos({
+      prefijos: ["cxc_", "saldo_", "totales_", "clientesConCxc_"],
+      scopeSucursal: scopeInvalidar,
+    });
 
     await conexion.commit();
     return res.status(201).json({
@@ -272,16 +292,30 @@ export const obtenerOcrearGrupoAbono = async (conn, abonoId, userId) => {
 /* LISTAR CUENTAS POR COBRAR DE UN CLIENTE                                    */
 /* ========================================================================== */
 export const listaCuentasPorCobrar = async (req, res) => {
-  const page = Number.isNaN(Number(req.query.page))
-    ? 1
-    : Number(req.query.page);
-  const limit = Number.isNaN(Number(req.query.limit))
-    ? 10
-    : Number(req.query.limit);
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const pageRaw = Number(req.query.page);
+  const limitRaw = Number(req.query.limit);
+  const page = Number.isInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const limit =
+    Number.isInteger(limitRaw) && limitRaw > 0
+      ? Math.min(limitRaw, 100)
+      : 10;
   const offset = (page - 1) * limit;
   const { cliente_id } = req.query;
 
-  const claveCache = `cxc_${cliente_id}_${page}_${limit}`;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND cxc.sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const claveCache = `cxc_${scopeSucursal}_${cliente_id}_${page}_${limit}`;
   const enCache = cacheMemoria.get(claveCache);
   if (enCache) return res.json(enCache);
 
@@ -293,9 +327,9 @@ export const listaCuentasPorCobrar = async (req, res) => {
     // 1. Total de cuentas
     const [[{ total }]] = await db.query(
       `SELECT COUNT(*) AS total
-       FROM cuentas_por_cobrar
-       WHERE cliente_id = ?`,
-      [cliente_id],
+       FROM cuentas_por_cobrar cxc
+       WHERE cxc.cliente_id = ?${whereSucursalSql}`,
+      [cliente_id, ...paramsSucursal],
     );
 
     // 2. Obtener cuentas paginadas
@@ -311,10 +345,10 @@ export const listaCuentasPorCobrar = async (req, res) => {
         cxc.fecha_vencimiento
        FROM cuentas_por_cobrar cxc
        JOIN clientes cli ON cli.id = cxc.cliente_id
-       WHERE cxc.cliente_id = ?
+       WHERE cxc.cliente_id = ?${whereSucursalSql}
        ORDER BY cxc.fecha_vencimiento ASC
        LIMIT ${limit} OFFSET ${offset}`,
-      [cliente_id],
+      [cliente_id, ...paramsSucursal],
     );
 
     // 3. Si no hay cuentas
@@ -356,7 +390,20 @@ export const listaCuentasPorCobrar = async (req, res) => {
 /* CLIENTES CON CUENTAS POR COBRAR (APROBADAS)                                */
 /* ========================================================================== */
 export const clientesConCXC = async (req, res) => {
-  const clave = "clientesConCxc";
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND cxc.sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const clave = `clientesConCxc_${scopeSucursal}_lista`;
   const hit = cacheMemoria.get(clave);
   if (hit) return res.json(hit);
 
@@ -369,8 +416,9 @@ export const clientesConCXC = async (req, res) => {
        FROM cuentas_por_cobrar cxc
        JOIN clientes cli ON cli.id = cxc.cliente_id
        JOIN cotizaciones cot ON cot.id = cxc.cotizacion_id
-       WHERE cot.estado = 'aprobada'
+       WHERE cot.estado = 'aprobada'${whereSucursalSql}
        ORDER BY cli.nombre ASC`,
+      paramsSucursal,
     );
 
     cacheMemoria.set(clave, rows, 600);
@@ -391,7 +439,20 @@ export const clientesConCXC = async (req, res) => {
 /* ========================================================================== */
 export const getTotalesPorCliente = async (req, res) => {
   const { cliente_id } = req.params;
-  const clave = `totales_${cliente_id}`;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const clave = `totales_${scopeSucursal}_${cliente_id}`;
   const hit = cacheMemoria.get(clave);
   if (hit) return res.json(hit);
 
@@ -404,8 +465,8 @@ export const getTotalesPorCliente = async (req, res) => {
     const [debeResult] = await db.query(
       `SELECT COALESCE(SUM(monto), 0) AS debe
        FROM cuentas_por_cobrar
-       WHERE cliente_id = ? AND estado != 'pagado'`,
-      [cliente_id],
+       WHERE cliente_id = ? AND estado != 'pagado'${whereSucursalSql}`,
+      [cliente_id, ...paramsSucursal],
     );
 
     const debe = parseFloat(debeResult[0].debe);
@@ -415,9 +476,9 @@ export const getTotalesPorCliente = async (req, res) => {
       `SELECT COALESCE(SUM(monto_usd_calculado), 0) AS haber
        FROM abonos_cuentas
        WHERE cuenta_id IN (
-         SELECT id FROM cuentas_por_cobrar WHERE cliente_id = ?
+         SELECT id FROM cuentas_por_cobrar WHERE cliente_id = ?${whereSucursalSql}
        )`,
-      [cliente_id],
+      [cliente_id, ...paramsSucursal],
     );
 
     const haber = parseFloat(haberResult[0].haber);
@@ -438,14 +499,27 @@ export const getTotalesPorCliente = async (req, res) => {
 /* ========================================================================== */
 export const getSaldoCuenta = async (req, res) => {
   const { cuenta_id } = req.params;
-  const clave = `saldo_${cuenta_id}`;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const clave = `saldo_${scopeSucursal}_${cuenta_id}`;
   const hit = cacheMemoria.get(clave);
   if (hit) return res.json(hit);
 
   try {
     const [[{ monto }]] = await db.query(
-      "SELECT monto FROM cuentas_por_cobrar WHERE id = ?",
-      [cuenta_id],
+      `SELECT monto FROM cuentas_por_cobrar WHERE id = ?${whereSucursalSql}`,
+      [cuenta_id, ...paramsSucursal],
     );
 
     if (!monto) {

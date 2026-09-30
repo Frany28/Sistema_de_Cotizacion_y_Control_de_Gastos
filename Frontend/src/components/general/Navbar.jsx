@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { LogOut, User } from "lucide-react";
 import imagenEmpresa from "../../Styles/img/Point Technology.png";
+import { verificarPermisoFront } from "../../../utils/verificarPermisoFront";
 
 function Navbar() {
   const location = useLocation();
@@ -10,6 +11,8 @@ function Navbar() {
   const [openDropdown, setOpenDropdown] = useState(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [puedeVerUsuarios, setPuedeVerUsuarios] = useState(false);
+  const [puedeVerGestorEventos, setPuedeVerGestorEventos] = useState(false);
   const dropdownRef = useRef();
   const mobileMenuRef = useRef();
 
@@ -26,8 +29,6 @@ function Navbar() {
     const porSlug = rolSlug === "admin" || rolSlug === "supervisor";
     return Boolean(porId || porSlug);
   };
-
-  const puedeVerGestorEventos = esAdminOSupervisor();
 
   const toggleDropdown = (dropdownName) => {
     setOpenDropdown(openDropdown === dropdownName ? null : dropdownName);
@@ -75,6 +76,30 @@ function Navbar() {
     };
   }, []);
 
+  useEffect(() => {
+    let activo = true;
+
+    const cargarPermisosNavbar = async () => {
+      const [tienePermisoUsuarios, tienePermisoGestorEventos] =
+        await Promise.all([
+          verificarPermisoFront("verUsuarios"),
+          verificarPermisoFront("verEventosArchivos"),
+        ]);
+
+      if (!activo) return;
+
+      setPuedeVerUsuarios(tienePermisoUsuarios);
+      setPuedeVerGestorEventos(
+        esAdminOSupervisor() && tienePermisoGestorEventos
+      );
+    };
+
+    cargarPermisosNavbar();
+    return () => {
+      activo = false;
+    };
+  }, []);
+
   const navItems = [
     { path: "/Dashboard", label: "Principal", type: "link" },
     {
@@ -89,7 +114,9 @@ function Navbar() {
         { path: "/administracion/proveedores", label: "Proveedores" },
         { path: "/administracion/bancos", label: "Bancos" },
         { path: "/administracion/sucursales", label: "Sucursales" },
-        { path: "/administracion/usuarios", label: "Usuarios" },
+        ...(puedeVerUsuarios
+          ? [{ path: "/administracion/usuarios", label: "Usuarios" }]
+          : []),
       ],
     },
     {

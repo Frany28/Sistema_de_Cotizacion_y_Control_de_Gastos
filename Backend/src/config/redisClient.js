@@ -1,19 +1,49 @@
-// ─────────────────────────────────────────────────────────────
 // src/config/redisClient.js
-// ─────────────────────────────────────────────────────────────
 import { createClient } from "redis";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-/** ①  Crea el cliente apuntando a Upstash (TLS por defecto) */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, ".env") });
+dotenv.config();
+
+function normalizeRedisUrl(value) {
+  const redisUrl = value?.trim();
+
+  if (!redisUrl) {
+    throw new Error("REDIS_URL no esta configurada");
+  }
+
+  if (redisUrl.startsWith("redis-cli ")) {
+    const urlMatch = redisUrl.match(/(?:^|\s)-u\s+(\S+)/);
+
+    if (!urlMatch) {
+      throw new Error("REDIS_URL contiene un comando redis-cli sin una URL valida");
+    }
+
+    const cliUrl = urlMatch[1];
+    return redisUrl.includes("--tls") && cliUrl.startsWith("redis://")
+      ? cliUrl.replace(/^redis:\/\//, "rediss://")
+      : cliUrl;
+  }
+
+  return redisUrl;
+}
+
+const redisUrl = normalizeRedisUrl(process.env.REDIS_URL);
+
 const redisClient = createClient({
-  url: process.env.REDIS_URL, // rediss://default:token@host:6379
-  socket: { tls: true },
+  url: redisUrl,
 });
 
-/** ②  Conexión “lazy”: no hacemos await aquí para no bloquear la lambda */
-redisClient.connect().catch(console.error);
+redisClient.connect().catch((error) => {
+  console.error("Redis connection error:", error);
+});
 
-/** ③  Manejo mínimo de eventos */
 redisClient.on("ready", () => console.log("Redis client ready"));
-redisClient.on("error", (e) => console.error("Redis error:", e));
+redisClient.on("error", (error) => console.error("Redis error:", error));
 
 export default redisClient;

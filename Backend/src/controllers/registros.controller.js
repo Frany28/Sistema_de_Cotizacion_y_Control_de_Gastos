@@ -100,6 +100,15 @@ export const createRegistro = async (req, res) => {
     datos.creadoPor = Number(datos.usuario);
   const tipoNormalizado = (datos.tipo || "").trim().toLowerCase();
 
+  if (tipoNormalizado === "gasto") {
+    if (!sucursalIdUsuario || Number.isNaN(sucursalIdUsuario)) {
+      return res
+        .status(403)
+        .json({ message: "Tu usuario no tiene sucursal asignada." });
+    }
+    datos.sucursal_id = sucursalIdUsuario;
+  }
+
   const conexion = await db.getConnection();
   let claveS3 = null;
 

@@ -18,7 +18,6 @@ const CrearRegistro = () => {
   const [modalError, setModalError] = useState({ visible: false, mensaje: "" });
   const [categoriasGastos, setCategoriasGastos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
-  const [sucursales, setSucursales] = useState([]);
   const [cotizaciones, setCotizaciones] = useState([]);
   const [usuarioId, setUsuarioId] = useState(null);
   const [vistaPreviaCargando, setVistaPreviaCargando] = useState(false);
@@ -107,19 +106,6 @@ const CrearRegistro = () => {
     };
 
     inicializar();
-  }, []);
-
-  useEffect(() => {
-    api
-      .get("/sucursales/dropdown/list", {
-        withCredentials: true,
-      })
-      .then((res) => {
-        setSucursales(res.data);
-      })
-      .catch((err) =>
-        console.error("Error cargando sucursales dropdown:", err)
-      );
   }, []);
 
   const crearCotizacion = async (datosGenerales) => {
@@ -392,7 +378,6 @@ const CrearRegistro = () => {
         "fecha",
         new Date(datosGasto.fecha).toISOString().split("T")[0]
       );
-      formData.append("sucursal_id", datosGasto.sucursal_id);
       formData.append("documento", datosGasto.documento);
       formData.append("creadoPor", usuarioId);
       formData.append("usuario", String(parseInt(usuarioId, 10)));
@@ -547,7 +532,6 @@ const CrearRegistro = () => {
             categoriasGastos={categoriasGastos}
             proveedores={proveedores}
             setProveedores={setProveedores}
-            sucursales={sucursales}
             cotizaciones={cotizaciones}
             crearGasto={crearGasto}
             onAgregarGasto={(nuevoGasto) => {

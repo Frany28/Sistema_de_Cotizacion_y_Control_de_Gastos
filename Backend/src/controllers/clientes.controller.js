@@ -1,12 +1,27 @@
 // controllers/clientes.controller.js
 import db from "../config/database.js";
-import cacheMemoria from "../utils/cacheMemoria.js";
+import cacheMemoria, {
+  obtenerScopeSucursalCache,
+  invalidarCachePorPrefijos,
+} from "../utils/cacheMemoria.js";
 
-// Verificar si un cliente ya existe (por nombre o email)
 export const verificarClienteExistente = async (req, res) => {
   const { nombre = "", email = "" } = req.query;
 
-  const key = `verif_${nombre.trim()}_${email.trim()}`;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const key = `verifCliente_${scopeSucursal}_${nombre.trim()}_${email.trim()}`;
   const hit = cacheMemoria.get(key);
   if (hit) return res.json(hit);
 
@@ -25,13 +40,13 @@ export const verificarClienteExistente = async (req, res) => {
       params.push(nombre.trim());
     }
     if (email.trim()) {
-      conditions.push("email  = ?");
+      conditions.push("email = ?");
       params.push(email.trim());
     }
 
     const [rows] = await db.execute(
-      `SELECT nombre, email FROM clientes WHERE ${conditions.join(" OR ")}`,
-      params
+      `SELECT nombre, email FROM clientes WHERE (${conditions.join(" OR ")})${whereSucursalSql}`,
+      [...params, ...paramsSucursal],
     );
 
     const response = {
@@ -41,23 +56,32 @@ export const verificarClienteExistente = async (req, res) => {
         email: rows.some((r) => r.email === email.trim()),
       },
     };
-    cacheMemoria.set(key, response, 60); // TTL 1 min
-    res.json(response);
+    cacheMemoria.set(key, response, 60);
+    return res.json(response);
   } catch (error) {
     console.error("Error al verificar cliente:", error);
-    res.status(500).json({ message: "Error interno al verificar cliente" });
+    return res
+      .status(500)
+      .json({ message: "Error interno al verificar cliente" });
   }
 };
 
-// Crear un nuevo cliente
 export const crearCliente = async (req, res) => {
   const { nombre, email, telefono, direccion, sucursal_id, identificacion } =
     req.body;
 
-  // Validación básica
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+
   if (
     ![nombre, email, telefono, direccion, identificacion].every((v) =>
-      v?.trim()
+      v?.trim(),
     )
   ) {
     return res.status(400).json({
@@ -75,10 +99,9 @@ export const crearCliente = async (req, res) => {
   }
 
   try {
-    // 2.1  Verificar duplicados rápidos por email o identificación
     const [existing] = await db.execute(
       "SELECT id FROM clientes WHERE email = ? OR identificacion = ?",
-      [email.trim(), identificacion.trim()]
+      [email.trim(), identificacion.trim()],
     );
     if (existing.length) {
       return res.status(409).json({
@@ -86,14 +109,17 @@ export const crearCliente = async (req, res) => {
       });
     }
 
-    // 2.2  Insertar registro
-    const sucursalId = sucursal_id ? parseInt(sucursal_id) : 4; // 4 = sucursal genérica
+    const sucursalId = esAdmin
+      ? sucursal_id
+        ? parseInt(sucursal_id, 10)
+        : 4
+      : Number(scopeSucursal);
 
     const usuarioId = req.user.id;
     const [insert] = await db.execute(
-      `INSERT INTO clientes 
-      (nombre, email, telefono, direccion, sucursal_id, identificacion, creadoPor)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO clientes
+         (nombre, email, telefono, direccion, sucursal_id, identificacion, creadoPor)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         nombre.trim(),
         email.trim(),
@@ -102,35 +128,31 @@ export const crearCliente = async (req, res) => {
         sucursalId,
         identificacion.trim(),
         usuarioId,
-      ]
+      ],
     );
 
     const clienteId = insert.insertId;
-
-    // 2.3  Generar código de referencia
     const codigoReferencia = `CLI-${String(clienteId).padStart(4, "0")}`;
     await db.execute("UPDATE clientes SET codigo_referencia = ? WHERE id = ?", [
       codigoReferencia,
       clienteId,
     ]);
 
-    // 2.4  Limpiar listados en caché
-    for (const k of cacheMemoria.keys()) {
-      if (k.startsWith("clientes_")) cacheMemoria.del(k);
-    }
+    invalidarCachePorPrefijos({
+      prefijos: ["clientes_"],
+      scopeSucursal: String(sucursalId),
+    });
 
-    // 2.5  Traer el registro completo con el nombre de la sucursal
     const [[clienteCompleto]] = await db.execute(
       `SELECT c.id, c.codigo_referencia, c.nombre, c.email, c.telefono,
               c.direccion, c.identificacion, c.sucursal_id,
               s.nombre AS sucursal_nombre
-       FROM clientes c
-       LEFT JOIN sucursales s ON s.id = c.sucursal_id
-       WHERE c.id = ?`,
-      [clienteId]
+         FROM clientes c
+         LEFT JOIN sucursales s ON s.id = c.sucursal_id
+        WHERE c.id = ?`,
+      [clienteId],
     );
 
-    // 2.6  Respuesta coherente con el resto de la API
     return res.status(201).json(clienteCompleto);
   } catch (error) {
     console.error("Error en crearCliente:", error);
@@ -138,48 +160,74 @@ export const crearCliente = async (req, res) => {
   }
 };
 
-// Obtener clientes paginados
 export const obtenerClientes = async (req, res) => {
-  // Convertir explícitamente a número
-  const page = Number.isNaN(Number(req.query.page))
-    ? 1
-    : Number(req.query.page);
-  const limit = Number.isNaN(Number(req.query.limit))
-    ? 10
-    : Number(req.query.limit);
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const pageRaw = Number(req.query.page);
+  const limitRaw = Number(req.query.limit);
+  const page = Number.isInteger(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const limit =
+    Number.isInteger(limitRaw) && limitRaw > 0
+      ? Math.min(limitRaw, 100)
+      : 10;
   const offset = (page - 1) * limit;
 
-  const claveCache = `clientes_${page}_${limit}`;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " WHERE sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
+  const claveCache = `clientes_${scopeSucursal}_${page}_${limit}`;
   const enCache = cacheMemoria.get(claveCache);
   if (enCache) return res.json(enCache);
 
   try {
-    // 1. Total de registros
     const [[{ total }]] = await db.query(
-      "SELECT COUNT(*) AS total FROM clientes"
+      `SELECT COUNT(*) AS total FROM clientes${whereSucursalSql}`,
+      paramsSucursal,
     );
 
     const [clientes] = await db.query(
-      `SELECT * FROM clientes ORDER BY id DESC LIMIT ${Number(
-        limit
-      )} OFFSET ${Number(offset)}`
+      `SELECT *
+         FROM clientes${whereSucursalSql}
+        ORDER BY id DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+      paramsSucursal,
     );
 
-    cacheMemoria.set(claveCache, { clientes, total }, 300); // TTL 5 min
-
-    res.json({ clientes, total });
+    const respuesta = { clientes, total, page, limit };
+    cacheMemoria.set(claveCache, respuesta, 300);
+    return res.json(respuesta);
   } catch (error) {
     console.error("Error al obtener clientes:", error);
-    res.status(500).json({ message: "Error al obtener los clientes" });
+    return res.status(500).json({ message: "Error al obtener los clientes" });
   }
 };
 
-// Actualizar cliente
 export const actualizarCliente = async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     return res.status(400).json({ error: "ID de cliente inválido" });
   }
+
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   const {
     nombre = "",
@@ -192,25 +240,26 @@ export const actualizarCliente = async (req, res) => {
 
   if (
     ![nombre, email, telefono, direccion, identificacion].every((v) => v.trim())
-  )
+  ) {
     return res.status(400).json({ error: "Todos los campos son obligatorios" });
+  }
 
   try {
-    /* 1. Registro actual */
     const [[actual]] = await db.execute(
-      "SELECT email, identificacion FROM clientes WHERE id = ?",
-      [id]
+      `SELECT email, identificacion, sucursal_id
+         FROM clientes
+        WHERE id = ?${whereSucursalSql}`,
+      [id, ...paramsSucursal],
     );
-    if (!actual)
+    if (!actual) {
       return res.status(404).json({ message: "Cliente no encontrado" });
+    }
 
-    /* 2. Detectar cambios */
     const emailCambio =
       actual.email?.toLowerCase().trim() !== email.toLowerCase().trim();
     const identCambio =
       (actual.identificacion ?? "").trim() !== identificacion.trim();
 
-    /* 3. Verificar duplicados solo si cambiaron */
     if (emailCambio || identCambio) {
       const conds = [];
       const params = [];
@@ -226,36 +275,62 @@ export const actualizarCliente = async (req, res) => {
 
       const [dup] = await db.execute(
         `SELECT id FROM clientes WHERE (${conds.join(" OR ")}) AND id <> ?`,
-        [...params, id]
+        [...params, id],
       );
       if (dup.length) {
         return res.status(409).json({ error: "Conflicto de datos únicos" });
       }
     }
 
-    /* 4. UPDATE */
+    const sucursalIdFinal = esAdmin
+      ? sucursal_id
+        ? Number(sucursal_id)
+        : null
+      : Number(scopeSucursal);
+
     const usuarioId = req.user.id;
     const [result] = await db.execute(
       `UPDATE clientes
-      SET nombre           = ?,
-          email            = ?,
-          telefono         = ?,
-          direccion        = ?,
-          identificacion   = ?,
-          sucursal_id      = ?,
-          actualizadoPor   = ?
-    WHERE id = ?`,
+          SET nombre         = ?,
+              email          = ?,
+              telefono       = ?,
+              direccion      = ?,
+              identificacion = ?,
+              sucursal_id    = ?,
+              actualizadoPor = ?
+        WHERE id = ?${whereSucursalSql}`,
       [
         nombre.trim(),
         email.trim(),
         telefono.trim(),
         direccion.trim(),
         identificacion.trim(),
-        sucursal_id ? Number(sucursal_id) : null,
+        sucursalIdFinal,
         usuarioId,
         id,
-      ]
+        ...paramsSucursal,
+      ],
     );
+
+    const scopesAInvalidar = new Set();
+    const sucursalAnterior = Number(actual.sucursal_id);
+    if (!Number.isNaN(sucursalAnterior) && sucursalAnterior > 0) {
+      scopesAInvalidar.add(String(sucursalAnterior));
+    }
+    if (!Number.isNaN(sucursalIdFinal) && sucursalIdFinal > 0) {
+      scopesAInvalidar.add(String(sucursalIdFinal));
+    }
+
+    if (scopesAInvalidar.size === 0) {
+      invalidarCachePorPrefijos({ prefijos: ["clientes_"] });
+    } else {
+      for (const scopeSucursalItem of scopesAInvalidar) {
+        invalidarCachePorPrefijos({
+          prefijos: ["clientes_"],
+          scopeSucursal: scopeSucursalItem,
+        });
+      }
+    }
 
     return res.json({
       message: result.affectedRows
@@ -270,17 +345,37 @@ export const actualizarCliente = async (req, res) => {
   }
 };
 
-// Eliminar cliente
 export const eliminarCliente = async (req, res) => {
   const clienteId = Number(req.params.id);
 
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+
   try {
-    // Validar cuentas por cobrar pendientes
+    const [[clienteActual]] = await db.execute(
+      `SELECT sucursal_id FROM clientes WHERE id = ?${whereSucursalSql}`,
+      [clienteId, ...paramsSucursal],
+    );
+
+    if (!clienteActual) {
+      return res.status(404).json({ message: "Cliente no encontrado." });
+    }
+
     const [[{ cuentaPendiente }]] = await db.execute(
       `SELECT COUNT(*) AS cuentaPendiente
          FROM cuentas_por_cobrar
         WHERE cliente_id = ? AND estado = 'pendiente'`,
-      [clienteId]
+      [clienteId],
     );
 
     if (cuentaPendiente > 0) {
@@ -290,12 +385,11 @@ export const eliminarCliente = async (req, res) => {
       });
     }
 
-    // Validar cotizaciones en proceso
     const [[{ cotizacionPendiente }]] = await db.execute(
       `SELECT COUNT(*) AS cotizacionPendiente
          FROM cotizaciones
         WHERE cliente_id = ? AND estado = 'pendiente'`,
-      [clienteId]
+      [clienteId],
     );
 
     if (cotizacionPendiente > 0) {
@@ -305,22 +399,26 @@ export const eliminarCliente = async (req, res) => {
       });
     }
 
-    // Si pasa validaciones, borramos
-    const [result] = await db.execute("DELETE FROM clientes WHERE id = ?", [
-      clienteId,
-    ]);
+    const [result] = await db.execute(
+      `DELETE FROM clientes WHERE id = ?${whereSucursalSql}`,
+      [clienteId, ...paramsSucursal],
+    );
 
-    // Limpiar caché
-    cacheMemoria.del(`cliente_${clienteId}`);
-    for (const k of cacheMemoria.keys()) {
-      if (k.startsWith("clientes_")) cacheMemoria.del(k);
-    }
+    const scopeInvalidar =
+      !Number.isNaN(Number(clienteActual.sucursal_id)) &&
+      Number(clienteActual.sucursal_id) > 0
+        ? String(Number(clienteActual.sucursal_id))
+        : null;
+
+    invalidarCachePorPrefijos({
+      prefijos: ["clientes_"],
+      scopeSucursal: scopeInvalidar,
+    });
 
     if (!result.affectedRows) {
       return res.status(404).json({ message: "Cliente no encontrado." });
     }
 
-    // Respuesta 204 para forzar refresco en frontend
     return res.status(204).end();
   } catch (error) {
     if (error.errno === 1451) {

@@ -1,45 +1,52 @@
 // middlewares/validarPermisoUsuarios.js
 import db from "../config/database.js";
+import cacheMemoria from "../utils/cacheMemoria.js";
 
-/**
- * Middleware para verificar un permiso específico de usuario.
- * Uso: router.post('/ruta', validarPermisoUsuarios('clave_permiso'), controlador);
- */
 export const validarPermisoUsuarios = (permisoRequerido) => {
   return async (req, res, next) => {
     try {
-      // 1) Usuario autenticado en req.user
       const usuario = req.user;
       if (!usuario?.id) {
-        return res.status(401).json({ message: "No has iniciado sesión" });
+        return res.status(401).json({ message: "No has iniciado sesion" });
       }
 
-      // 2) Traer los permisos asignados al usuario
-      const [resultado] = await db.execute(
-        `
-        SELECT p.clave
-          FROM usuarios u
-          JOIN roles r ON u.rol_id = r.id
-          JOIN roles_permisos rp ON r.id = rp.rol_id
-          JOIN permisos p ON rp.permiso_id = p.id
-         WHERE u.id = ?
-        `,
-        [usuario.id]
-      );
+      if (usuario.rol_id === 1) {
+        return next();
+      }
 
-      const permisosDelUsuario = resultado.map((p) => p.clave);
+      const claveCache = `permiso_rol_${usuario.rol_id}_${permisoRequerido}`;
+      const hit = cacheMemoria.get(claveCache);
 
-      // 3) Comprobar si el permiso requerido está en la lista
-      if (!permisosDelUsuario.includes(permisoRequerido)) {
+      let tienePermiso = hit;
+      if (tienePermiso === undefined) {
+        const [rows] = await db.execute(
+          `
+          SELECT 1
+            FROM roles_permisos rp
+            JOIN permisos p ON rp.permiso_id = p.id
+           WHERE rp.rol_id = ?
+             AND (p.nombre = ? OR p.clave = ?)
+           LIMIT 1
+          `,
+          [usuario.rol_id, permisoRequerido, permisoRequerido],
+        );
+
+        tienePermiso = rows.length > 0;
+        cacheMemoria.set(claveCache, tienePermiso, 600);
+      }
+
+      if (!tienePermiso) {
         return res
           .status(403)
-          .json({ message: "No tienes permiso para esta acción" });
+          .json({ message: "No tienes permiso para esta accion" });
       }
 
-      next();
+      return next();
     } catch (error) {
-      console.error("Error en validación de permisos de usuario:", error);
-      res.status(500).json({ message: "Error interno al verificar permisos" });
+      console.error("Error en validacion de permisos de usuario:", error);
+      return res
+        .status(500)
+        .json({ message: "Error interno al verificar permisos" });
     }
   };
 };

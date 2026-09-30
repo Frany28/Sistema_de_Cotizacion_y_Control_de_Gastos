@@ -3,9 +3,12 @@ import { Bell, File } from "lucide-react";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { es } from "date-fns/locale";
 import api from "../../../api";
+import { verificarPermisoFront } from "../../../../utils/verificarPermisoFront.js";
 
 function RegistroDeActividades() {
   const [eventos, setEventos] = useState([]);
+  const [verificandoPermiso, setVerificandoPermiso] = useState(true);
+  const [puedeVerEventos, setPuedeVerEventos] = useState(false);
 
   /** 🔎 Traduce el tipo de evento a una frase legible */
   const obtenerDescripcionAccion = (tipoEvento) => {
@@ -48,8 +51,31 @@ function RegistroDeActividades() {
   }, []);
 
   useEffect(() => {
-    fetchEventos();
+    let activo = true;
+
+    const cargar = async () => {
+      try {
+        const tienePermiso = await verificarPermisoFront("verEventosArchivos");
+        if (!activo) return;
+
+        setPuedeVerEventos(tienePermiso);
+        if (tienePermiso) {
+          await fetchEventos();
+        }
+      } finally {
+        if (activo) setVerificandoPermiso(false);
+      }
+    };
+
+    cargar();
+    return () => {
+      activo = false;
+    };
   }, [fetchEventos]);
+
+  if (verificandoPermiso || !puedeVerEventos) {
+    return null;
+  }
 
   return (
     <div className="w-full bg-gray-700 rounded-2xl shadow p-4 flex flex-col gap-3">

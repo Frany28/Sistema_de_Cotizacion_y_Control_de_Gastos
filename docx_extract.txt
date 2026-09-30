@@ -1,0 +1,1899 @@
+1: Informe de Producción Sistema Cotización Gastos
+2: El presente Informe de Producción documenta el estado actual y los objetivos del Sistema de Cotización y Gastos, una solución en fase de prueba desarrollada para la empresa Point Technology. Este sistema nace con la finalidad de evaluar y demostrar las habilidades de programación de su autora, Franciely Vivas, desarrolladora junior, quien ha llevado a cabo de manera íntegra todas las etapas de análisis, diseño, implementación y pruebas de forma individual.
+3: El sistema abarca dos procesos fundamentales para la gestión administrativa de la empresa:
+4: Gestión de Gastos: permite el registro, clasificación y control de todo tipo de gastos incurridos, incluyendo la asociación con proveedores, categorías de gasto y detalles de IVA e impuestos correspondientes.
+5: Registro de Cotizaciones: facilita la generación, almacenamiento y seguimiento de cotizaciones emitidas a clientes, con detalle de ítems de servicio, totales calculados automáticamente y opciones de confirmación por parte del cliente.
+6: Aunque ya cuenta con funcionalidades esenciales y ha superado sus primeras rondas de validación interna, el desarrollo continúa en curso para perfeccionar interfaces, robustecer la capa de seguridad y enriquecer la automatización. Este informe servirá como punto de partida para entender el alcance empeñado hasta la fecha, las decisiones arquitectónicas adoptadas y las áreas de mejora propuestas para las siguientes iteraciones.
+7: Alcance
+8: Problema que resuelve
+9: Optimiza el registro y control de gastos empresariales, minimizando errores manuales y garantizando trazabilidad completa de cada operación.
+10: Asegura un rendimiento óptimo: hasta 20 registros de gasto diarios y generación de cotizaciones en menos de 3 segundos.
+11: Funcionalidades incluidas
+12: Gestión de roles y permisos: definición de usuarios con permisos diferenciados (administrador, Supervisor, Empleado, Visitante).
+13: CRUD de sucursales: Registro, edición, eliminación y consulta de sucursales.
+14: CRUD de proveedores: Gestión completa de proveedores asociados a gastos y cotizaciones.
+15: Registro CRUD de gastos: captura de proveedor, tipo de gasto, subtotales, IVA e impuestos.
+16: Generación de cotizaciones: detalle de ítems de servicio, totales calculados automáticamente y confirmación de cliente.
+17: Cuentas por cobrar (CXC): Registro de abonos, consulta de saldos pendientes.
+18: Trazabilidad de archivos: control de versiones y auditoría de facturas.
+19: Solicitudes de pago a proveedores: Creación, aprobación y generación de comprobante digital.
+20: Administración de archivos: Control de versiones, auditoría y trazabilidad.
+21: Gestión de bancos: CRUD de bancos y métodos de pago
+22: Catálogo de servicios y productos: Registro y mantenimiento de servicios y productos ofertados.
+23: Gestión de bancos: CRUD de bancos y métodos de pago
+24: Catálogo de servicios y productos: Registro y mantenimiento de servicios y productos ofertados.
+25: Funcionalidades excluidas (pendientes para fases posteriores)
+26: Reportes avanzados de Cuentas por Cobrar (balance detallado, proyecciones).  Gestión y reportes de Pagos Realizados (historial, comprobantes).
+27: Gestor de Eventos de Archivos (notificaciones, auditorías en tiempo real).
+28: Perfil de Usuario (edición de datos personales, cambio de contraseña).
+29: Tecnologías y Herramientas
+30: El proyecto está organizado como un monorepo que agrupa dos carpetas principales,
+31: Backend y Frontend, y soporta desarrollo local con Docker, así como despliegue en Netlify y plataformas PaaS ( Vercel).
+32: Backend
+33: Lenguaje y entorno: Node.js  20 LTS (ES Modules)
+34: Framework: Express.js
+35: Base de datos: MySQL 8.x (motor InnoDB)
+36: Almacenamiento de archivos: AWS S3 (AWS SDK para JavaScript)
+37: Automatización de PDF: Puppeteer (Chromium sin sandbox en Docker)
+38: Control de calidad:
+39: Linter: ESLint
+40: Formateo: Prettier
+41: Scripts útiles (package.json):
+42: npm run devnpm run dev(nodemon src/server.js)
+43: npm run dev
+44: npm run dev
+45: npm startnpm startnpm run lintnpm run lint
+46: npm start
+47: npm start
+48: npm run lint
+49: npm run lint
+50: Contenedorización: Dockerfile multi-stage (runtime + build)
+51: Frontend
+52: Librería: React.js
+53: Bundler: Vite
+54: Estilos: Tailwind CSS
+55: Cliente HTTP: Axios
+56: Scripts útiles (package.json):
+57: npm run devnpm run dev(servidor de Vite)
+58: npm run dev
+59: npm run dev
+60: npm run buildnpm run buildnpm run previewnpm run preview→
+61: npm run build
+62: npm run build
+63: npm run preview
+64: npm run preview
+65: Infraestructura y CI/CD
+66: Contenedores y orquestación local: Docker Compose (MySQL + Backend + Frontend)
+67: Repositorios y control de versiones: Git + GitHub
+68: Integración Continua: GitHub Actions
+69: Despliegue Frontend: Netlify (configuración en netlify.toml)
+70: Despliegue Backend: Vercel
+71: Variables de entorno clave  Base de datos:
+72: DB_NAMEDB_NAMEDB_HOST , DB_PORT , DB_USER , DB_PASSWORD ,
+73: DB_NAME
+74: DB_NAME
+75: Sesiones y CORS:
+76: SESSION_SECRET ,SESSION_SECRET ,FRONTEND_URLFRONTEND_URL
+77: SESSION_SECRET ,
+78: SESSION_SECRET ,
+79: FRONTEND_URL
+80: FRONTEND_URL
+81: AWS S3:
+82: S3_BUCKETS3_BUCKETAWS_ACCESS_KEY_ID , AWS_SECRET_ACCESS_KEY , AWS_REGION ,
+83: S3_BUCKET
+84: S3_BUCKET
+85: Puppeteer:
+86: CHROMIUM_PATHCHROMIUM_PATH
+87: CHROMIUM_PATH
+88: CHROMIUM_PATH
+89: API URL en Frontend:
+90: VITE_API_URLVITE_API_URL
+91: VITE_API_URL
+92: VITE_API_URL
+93: Arranque
+94: El usuario abre la SPA en el navegador (Netlify).
+95: La aplicación carga configuraciones ( VITE_API_URL ) y recursos estáticos.
+96: Solicitud de Datos
+97: /api/.../api/... El cliente emite peticiones HTTP (GET/POST/PUT/DELETE) a la ruta backend.
+98: /api/...
+99: /api/...
+100: Express valida permisos (session cookie + Redis) y enruta al controlador correspondiente.
+101: Procesamiento en Backend
+102: del
+103: Controlador recibe datos y, a través de Sequelize, interactúa con MySQL para leer o modificar registros.
+104: Para operaciones con archivos, el backend llama a AWS S3 para subir/descargar objetos y registra metadatos en la tabla archivos .
+105: Respuesta al Cliente
+106: La API envía respuestas en formato JSON con payloads estandarizados (código HTTP, mensajes, datos).
+107: Módulos del Sistema
+108: Módulo Clientes
+109: El Módulo Clientes permite gestionar de forma íntegra los registros de clientes en la base de datos, garantizando unicidad, validez y trazabilidad.
+110: clientesclientesEstructura de la Entidad ()
+111: clientes
+112: clientes
+113: Campo
+114: Tipo
+115: Descripción
+116: id
+117: int PK
+118: Identificador único interno (autoincremental).
+119: codigoReferencia
+120: varchar(20)
+121: Código público del cliente, formato fijo CLI-XXXX (p. ej. CLI-0137 ).
+122: nombre
+123: varchar(255)
+124: Nombre o razón social del cliente.
+125: identificacion
+126: varchar(20)
+127: Cédula o pasaporte.
+128: email
+129: varchar(255)
+130: Correo electrónico válido.
+131: telefono
+132: varchar(20)
+133: Número de contacto con código de país/área.
+134: direccion
+135: varchar(255)
+136: Dirección física o sede principal.
+137: sucursalId
+138: int
+139: Clave foránea a tabla sucursales (sucursal asignada).
+140: fechaRegistro
+141: timestamp
+142: Fecha y hora en que se creó el registro.
+143: Operaciones Soportadas
+144: Crear Cliente
+145: Entrada: JSON con codigoReferencia , nombre , identificacion , email , telefono , direccion ,
+146: sucursalId .sucursalId .
+147: sucursalId .
+148: sucursalId .
+149: Validaciones:
+150: codigoReferenciacodigoReferenciaúnico y coincidente con ^CLI\-\d{4}$ .
+151: codigoReferencia
+152: codigoReferencia
+153: emailemailsucursalIdsucursalIdformato RFC 5322 y no duplicado. existente en sucursales .
+154: email
+155: email
+156: sucursalId
+157: sucursalId
+158: idid Proceso: Inserción en clientes ; se devuelve el objeto completo con
+159: id
+160: id
+161: Editar Cliente
+162: y fechaRegistro .
+163: ididEntrada:en parámetro de ruta y JSON con los campos a modificar.
+164: id
+165: id
+166: Validaciones (solo para campos cambiados):  Unicidad y patrón de codigoReferencia .
+167: Formato y unicidad de email .
+168: Proceso: UPDATE de clientes ; se retorna el registro actualizado.
+169: Eliminar Cliente
+170: ididEntrada:del cliente a eliminar.
+171: id
+172: id
+173: Validaciones Previas:
+174: No existir cotizaciones, gastos o cuentasPorCobrar activos asociados.
+175: Proceso:
+176: inactivoinactivoeventosArchivoeventosArchivoCambiar estado a Registrar evento en
+177: inactivo
+178: inactivo
+179: eventosArchivo
+180: eventosArchivo
+181: (borrado lógico) o DELETE físico, según configuración. o tabla de auditoría (auditoría de operaciones).
+182: Reglas de Negocio y Validaciones
+183: Formato de codigoReferencia : Debe seguir el regex ^CLI\-\d{4}$ .
+184: Integridad Referencial: No permitir eliminación física si hay dependencias activas.
+185: Normalización: Trim de espacios y capitalización de nombres ( nombre ).
+186: Interfaz de Usuario
+187: Listado
+188: Tabla paginada con columnas:
+189: codigoReferenciacodigoReferencianombrenombre|
+190: codigoReferencia
+191: codigoReferencia
+192: nombre
+193: nombre
+194: |
+195: ||
+196: emailemailtelefonotelefonosucursalIdsucursalId Acciones: Editar, Eliminar.
+197: email
+198: email
+199: telefono
+200: telefono
+201: sucursalId
+202: sucursalId
+203: Formulario de Alta/Edición
+204: Campos obligatorios.  Validaciones.
+205: Módulo Servicios y Productos
+206: El Módulo Servicios y Productos. Gestiona el catálogo de ítems que pueden incluirse en cotizaciones o asociarse a gastos. A continuación se detalla su diseño, operaciones y reglas de negocio.
+207: servicios_productosservicios_productosEstructura de la Entidad ()
+208: servicios_productos
+209: servicios_productos
+210: Campo
+211: Tipo
+212: Descripción
+213: id
+214: int PK
+215: Identificador único interno (autoincremental).
+216: Campo
+217: Tipo
+218: Descripción
+219: codigo
+220: varchar(20)
+221: Código único de ítem (p. ej. SER-0027 , PRO-0036 ).
+222: nombre
+223: varchar(255)
+224: Nombre descriptivo del servicio o producto.
+225: descripcion
+226: text
+227: Detalle ampliado de características o alcances.
+228: precio
+229: decimal(10,2)
+230: Precio unitario base sin IVA.
+231: tipo
+232: enum('servicio','producto')
+233: Define si el ítem es un servicio o un producto.
+234: porcentajeIva
+235: decimal(5,2)
+236: Porcentaje de IVA aplicable (p. ej. 8.00 , 16.00 ).
+237: estado
+238: enum('activo','inactivo')
+239: Indica si el ítem está disponible ( activo ) o deshabilitado ( inactivo ).
+240: fechaRegistro
+241: timestamp
+242: Fecha y hora de creación del registro.
+243: cantidadActual
+244: int
+245: Stock en inventario (actualmente desactivado en esta fase).
+246: cantidadAnterior
+247: int
+248: Stock antes del último ajuste (desactivado).
+249: Operaciones Soportadas
+250: Crear Servicio/Producto
+251: Entrada: JSON con codigo , nombre , descripcion , precio , tipo , porcentajeIva .
+252: Validaciones:
+253: codigocodigotipotiposervicioservicioo producto .o producto .único en la tabla. debe ser
+254: codigo
+255: codigo
+256: tipo
+257: tipo
+258: servicio
+259: servicio
+260: o producto .
+261: o producto .
+262: precioprecioporcentajeIvaporcentajeIvaydeben ser  0.
+263: precio
+264: precio
+265: porcentajeIva
+266: porcentajeIva
+267: idid  Proceso: Inserción en servicios_productos ; retorna objeto completo con
+268: id
+269: id
+270: Editar Servicio/Producto
+271: y fechaRegistro .
+272: ididEntrada:en ruta y JSON con campos a actualizar.
+273: id
+274: id
+275: Validaciones (solo para campos modificados):  Si cambia codigo , verificar unicidad.
+276: estadoestadoSi cambiaa activo , permitir siempre; si a inactivo , solo si no hay
+277: estado
+278: estado
+279: cotizaciones activas usando este ítem.
+280: Proceso: UPDATE en servicios_productos ; retorna registro actualizado.
+281: Eliminar Servicio/Producto
+282: ididEntrada:del ítem a eliminar.
+283: id
+284: id
+285: Regla: Solo se permite eliminación física si estado = 'inactivo' .
+286: Proceso:
+287: Verificar que
+288: estadoestadosea inactivo .
+289: estado
+290: estado
+291: Verificar que no existan cotizaciones o registros de gasto activos asociados.
+292: DELETE físico de la fila.
+293: Registrar evento en auditoría.
+294: Reglas de Negocio y Validaciones
+295: Códigos:
+296: Patrón alfanumérico prefijado ( SER-\d{4} o PRO-\d{4} ).
+297: Unicidad:
+298: codigocodigoy combinación nombre + tipo deben ser únicos.
+299: codigo
+300: codigo
+301: Estado:
+302: inactivoinactivo Un ítem que aparece en cualquier cotización activa no puede pasarse a que se cierre o cancele la cotización.
+303: inactivo
+304: inactivo
+305: Stock:
+306: hasta
+307: cantidadActualcantidadActual Aunque la gestión de
+308: cantidadActual
+309: cantidadActual
+310: para su futura habilitación.
+311: Interfaz de Usuario
+312: Listado de Ítems
+313: tipotipoprecioprecioporcentajeIvaporcentajeIvaestadoestado Tabla con columnas:
+314: tipo
+315: tipo
+316: precio
+317: precio
+318: porcentajeIva
+319: porcentajeIva
+320: estado
+321: estado
+322: está desactivada, la entidad mantiene los campos
+323: codigocodigonombrenombre│
+324: codigo
+325: codigo
+326: nombre
+327: nombre
+328: Filtros por
+329: │
+330: tipotipo
+331: tipo
+332: tipo
+333: │
+334: ││
+335: y estado .y estado .  Acciones: Editar, Eliminar solo disponible si estado = inactivo .
+336: y estado .
+337: y estado .
+338: Formulario de Alta/Edición
+339: Campos obligatorios marcados; validaciones en tiempo real (por ejemplo, formato numérico en precio ).
+340: tipotipo Selector decon opciones predefinidas.
+341: tipo
+342: tipo
+343: Cambio de Estado
+344: Modal para activar/desactivar ítem. Se muestra advertencia si existen dependencias.
+345: Módulo Proveedores
+346: El Módulo Proveedores gestiona los datos de los terceros que suministran bienes o
+347: servicios, y se integra con los módulos de Gastos y Solicitudes de Pago. A continuación se detalla su estructura, operaciones y reglas de negocio.
+348: proveedoresproveedoresEstructura de la Entidad ()
+349: proveedores
+350: proveedores
+351: Campo
+352: Tipo
+353: Descripción
+354: id
+355: int PK
+356: Identificador único interno (autoincremental).
+357: rif
+358: varchar(12)
+359: Registro de Información Fiscal, actúa como código público y clave natural del proveedor (p. ej. J-12345678-9 ).
+360: nombre
+361: varchar(255)
+362: Razón social o nombre comercial del proveedor.
+363: email
+364: varchar(255)
+365: Correo electrónico de contacto.
+366: telefono
+367: varchar(100)
+368: Número de teléfono con código de país y área.
+369: direccion
+370: varchar(255)
+371: Ubicación física o domicilio fiscal.
+372: estado
+373: enum('activo','inactivo')
+374: Indica si el proveedor está habilitado ( activo ) o deshabilitado ( inactivo ).
+375: fechaRegistro
+376: timestamp
+377: Fecha y hora en que se creó el registro.
+378: Operaciones Soportadas
+379: Crear Proveedor
+380: Entrada: JSON con rif , nombre , email , telefono , direccion .
+381: Validaciones:
+382: rifrifemailemailúnico y válido según formato fiscal nacional. formato RFC 5322.
+383: rif
+384: rif
+385: email
+386: email
+387: idid Proceso: Inserción en proveedores ; respuesta con objeto completo, incluyendoy
+388: id
+389: id
+390: fechaRegistro .fechaRegistro .
+391: fechaRegistro .
+392: fechaRegistro .
+393: Editar Proveedor
+394: ididEntrada:en ruta y JSON con campos a modificar.
+395: id
+396: id
+397: Validaciones (solo para campos cambiados):
+398: Si cambia rif , verificar unicidad.  Formato de email .
+399: Proceso: UPDATE en proveedores ; devuelve el registro actualizado.
+400: Eliminar Proveedor
+401: ididEntrada:del proveedor a eliminar.
+402: id
+403: id
+404: Validaciones Previas:
+405: pendientependiente  No existen gastos ni solicitudes de pago asociadas en estado
+406: pendiente
+407: pendiente
+408: Proceso:
+409: aprobado .
+410: estadoestadoCambiar
+411: estado
+412: estado
+413: a
+414: (borrado lógico).
+415: inactivoinactivoRegistrar evento en auditoría.
+416: inactivo
+417: inactivo
+418: (Opcional) DELETE físico si no hay historial de transacciones asociadas.
+419: Reglas de Negocio y Validaciones
+420: Clave Natural:
+421: rifrifsirve como identificador público; no se permite duplicado.
+422: rif
+423: rif
+424: Integridad Referencial:
+425: Un proveedor con gastos o pagos vinculados activos no puede eliminarse (ni cambiar a inactivo ) hasta que se cierren o cancelen dichos registros.
+426: Normalización:
+427: Espacios y mayúsculas controlados en nombre .
+428: Auditoría:
+429: Todas las operaciones (crear, editar, eliminar) se registran con usuario y timestamp.
+430: Interfaz de Usuario
+431: Listado de Proveedores
+432: Tabla paginada con columnas:
+433: rifrifnombrenombre│
+434: rif
+435: rif
+436: nombre
+437: nombre
+438: │
+439: ││
+440: emailemailtelefonotelefonoestadoestado Acciones: Editar, Eliminar.
+441: email
+442: email
+443: telefono
+444: telefono
+445: estado
+446: estado
+447: Formulario de Alta/Edición
+448: Campos obligatorios claramente marcados.
+449: rifrif Validaciones (ej. formato de
+450: rif
+451: rif
+452: Confirmación de Eliminación
+453: y email ).
+454: Modal de advertencia que informa sobre proveedor activo.
+455: Módulo Bancos
+456: El Módulo Bancos gestiona las entidades de cuenta bancaria o medios de pago que
+457: intervienen en las solicitudes de pago y en los registros de abonos. A continuación se detalla su esquema, operaciones y reglas de negocio.
+458: bancosbancosEstructura de la Entidad ()
+459: bancos
+460: bancos
+461: Campo
+462: Tipo
+463: Descripción
+464: id
+465: int PK
+466: Identificador único interno (autoincremental).
+467: nombre
+468: varchar(100)
+469: Nombre del banco o medio de pago (p. ej. “Banco de Venezuelaˮ, “PayPalˮ).
+470: moneda
+471: enum('VES','USD')
+472: Moneda de la cuenta (bolívares o dólares).
+473: tipoIdentificador
+474: enum('nro_cuenta','email')
+475: Tipo de dato usado para identificar la cuenta: número de cuenta bancaria o correo electrónico.
+476: identificador
+477: varchar(150)
+478: Valor del identificador (p. ej. “0102-0123-4500- 0001-2345ˮ o “usuario@ p ay pal.comˮ).
+479: estado
+480: enum('activo','inactivo')
+481: Indica si la entidad está disponible ( activo ) o deshabilitada ( inactivo ).
+482: fechaCreacion
+483: timestamp DEFAULT CURRENT_TIMESTAMP
+484: Fecha y hora en que se creó el registro.
+485: fechaActualizacion
+486: timestamp ON UPDATE CURRENT_TIMESTAMP
+487: Fecha y hora de la última modificación.
+488: creadoPor
+489: int FK
+490: Usuario que creó el banco (clave foránea a
+491: usuarios.id ).
+492: actualizadoPor
+493: int FK NULL
+494: Usuario que actualizó por última vez (clave foránea a usuarios.id ).
+495: Operaciones Soportadas
+496: Crear Banco
+497: Entrada: JSON con nombre , moneda , tipoIdentificador , identificador , creadoPor .
+498: Validaciones:
+499: nombrenombremonedamonedano vacío y longitud  100 caracteres. en { VES , USD }.
+500: nombre
+501: nombre
+502: moneda
+503: moneda
+504: tipoIdentificadortipoIdentificadoren { nro_cuenta , email }.
+505: tipoIdentificador
+506: tipoIdentificador
+507: identificadoridentificadortipoIdentificadortipoIdentificadorProceso:
+508: identificador
+509: identificador
+510: tipoIdentificador
+511: tipoIdentificador
+512: único para la combinación
+513: + moneda .
+514: Verificar unicidad de identificador .
+515: Insertar fila en bancos .
+516: fechaCreacionfechaCreaciony fechaActualizacion .y fechaActualizacion .Devolver objeto completo con id ,
+517: fechaCreacion
+518: fechaCreacion
+519: y fechaActualizacion .
+520: y fechaActualizacion .
+521: Editar Banco
+522: Entrada: id en ruta y JSON con campos a modificar ( nombre , moneda , tipoIdentificador ,
+523: identificador , actualizadoPor ).
+524: Validaciones:
+525: Si cambia identificador , verificar que no exista duplicado.
+526: monedamonedatipoIdentificadortipoIdentificadorProceso:
+527: moneda
+528: moneda
+529: tipoIdentificador
+530: tipoIdentificador
+531: y
+532: solo en valores permitidos.
+533: fechaActualizacion  NOW()fechaActualizacion  NOW()UPDATE de bancos , seteando
+534: fechaActualizacion  NOW()
+535: fechaActualizacion  NOW()
+536: Retornar registro actualizado.
+537: Eliminar Banco
+538: y actualizadoPor .
+539: ididEntrada: Proceso:
+540: id
+541: id
+542: Cambiar
+543: del banco a eliminar.
+544: estadoestadoa inactivo .a inactivo .
+545: estado
+546: estado
+547: a inactivo .
+548: a inactivo .
+549: Registrar
+550: actualizadoPoractualizadoPory fechaActualizacion .y fechaActualizacion .(Opcional) DELETE físico.
+551: actualizadoPor
+552: actualizadoPor
+553: y fechaActualizacion .
+554: y fechaActualizacion .
+555: Reglas de Negocio y Validaciones
+556: tipoIdentificadortipoIdentificador Unicidad del identificador:
+557: tipoIdentificador
+558: tipoIdentificador
+559: monedamonedaNingún otro banco con la misma
+560: moneda
+561: moneda
+562: y
+563: puede tener idéntico
+564: identificador .identificador .
+565: identificador .
+566: identificador .
+567: Integridad referencial:
+568: Deshabilitar ( inactivo ) en lugar de eliminar si hay transacciones asociadas.
+569: Auditoría:
+570: Todos los cambios de estado, creación y edición registran creadoPor / actualizadoPor .
+571: Interfaz de Usuario
+572: Listado de Bancos
+573: identificadoridentificadorestadoestado Tabla paginada con columnas:
+574: identificador
+575: identificador
+576: estado
+577: estado
+578: ididnombrenombre│
+579: id
+580: id
+581: nombre
+582: nombre
+583: Filtros por
+584: │
+585: │
+586: monedamonedatipoIdentificadortipoIdentificadormonedamoneday estado .
+587: moneda
+588: moneda
+589: tipoIdentificador
+590: tipoIdentificador
+591: moneda
+592: moneda
+593: ││
+594: estadoestadoa inactivo .a inactivo . Acciones: Editar, Deshabilitar — el botón de eliminar pasa
+595: estado
+596: estado
+597: a inactivo .
+598: a inactivo .
+599: Formulario de Alta/Edición
+600: monedamonedaInputs para nombre ,
+601: moneda
+602: moneda
+603: (dropdown),
+604: (dropdown) e identificador .
+605: tipoIdentificadortipoIdentificador  Validaciones en tiempo real: formato de cuenta o email según tipoIdentificador .
+606: tipoIdentificador
+607: tipoIdentificador
+608: Confirmación de Deshabilitación.
+609: Módulo Sucursales
+610: El Módulo Sucursales administra las diferentes sedes o puntos de atención de la empresa, y se relaciona con clientes, gastos y cotizaciones para segmentar la información por
+611: ubicación.
+612: sucursalessucursalesEstructura de la Entidad ()
+613: sucursales
+614: sucursales
+615: Campo
+616: Tipo
+617: Descripción
+618: id
+619: int PK
+620: Identificador interno (autoincremental).
+621: codigo
+622: varchar(10)
+623: Código único de sucursal (p. ej. SC01 , SN01 ).
+624: nombre
+625: varchar(100)
+626: Nombre descriptivo de la sucursal.
+627: direccion
+628: text
+629: Dirección física completa.
+630: ciudad
+631: varchar(100)
+632: Ciudad donde se ubica la sucursal.
+633: estadoProvincia
+634: varchar(100)
+635: Estado o provincia correspondiente.
+636: pais
+637: varchar(100)
+638: País.
+639: telefono
+640: varchar(20)
+641: Teléfono de contacto (código de área incluido).
+642: email
+643: varchar(100)
+644: Correo electrónico de la sucursal (opcional).
+645: responsable
+646: varchar(100)
+647: Nombre de la persona encargada en la sucursal.
+648: estado
+649: enum('activo','inactivo')
+650: Indica si la sucursal está operativa ( activo ) o no ( inactivo ).
+651: fechaCreacion
+652: timestamp
+653: Fecha y hora de creación del registro.
+654: fechaActualizacion
+655: timestamp
+656: Fecha y hora de la última modificación.
+657: creadoPor
+658: int FK
+659: Usuario que creó el registro ( usuarios.id ).
+660: actualizadoPor
+661: int FK NULL
+662: Usuario que actualizó por última vez ( usuarios.id ).
+663: Operaciones Soportadas
+664: Crear Sucursal
+665: Entrada: JSON con codigo , nombre , direccion , ciudad , estadoProvincia , pais , telefono , email ,
+666: responsable , creadoPor .
+667: Validaciones:
+668: codigocodigoúnico y máximo 10 caracteres.
+669: codigo
+670: codigo
+671: creadoPorcreadoPory fechaActualizacion .y fechaActualizacion .email , si se provee, con formato válido. corresponde a un usuario existente.
+672: creadoPor
+673: creadoPor
+674: y fechaActualizacion .
+675: y fechaActualizacion .
+676: fechaCreacionfechaCreacion  Proceso: INSERT en sucursales ; devuelve objeto con id ,
+677: fechaCreacion
+678: fechaCreacion
+679: Editar Sucursal
+680: ididEntrada:en ruta y JSON con campos a actualizar.
+681: id
+682: id
+683: Validaciones (solo para campos modificados):
+684: codigocodigofechaActualizacion  NOW()fechaActualizacion  NOW()Unicidad desi cambia. Formato de email .
+685: codigo
+686: codigo
+687: fechaActualizacion  NOW()
+688: fechaActualizacion  NOW()
+689: Proceso: UPDATE en sucursales , estableciendo retorna registro actualizado.
+690: Eliminar Sucursal
+691: y actualizadoPor ;
+692: ididEntrada:de la sucursal a eliminar.
+693: id
+694: id
+695: Validaciones Previas:
+696: gastosgastos  No existir registros activos en clientes ,
+697: gastos
+698: gastos
+699: o
+700: cotizacionescotizacionesreferenciando esta
+701: cotizaciones
+702: cotizaciones
+703: sucursal .sucursal .
+704: sucursal .
+705: sucursal .
+706: Proceso:
+707: estadoestadoCambiar
+708: estado
+709: estado
+710: Registrar
+711: a inactivo .a inactivo .
+712: a inactivo .
+713: a inactivo .
+714: actualizadoPoractualizadoPory actualizar fechaActualizacion .
+715: actualizadoPor
+716: actualizadoPor
+717: (Opcional) DELETE físico si no hay trazabilidad histórica asociada.
+718: Reglas de Negocio y Validaciones
+719: Clave Única:
+720: codigocodigode sucursal debe ser único.
+721: codigo
+722: codigo
+723: Integridad Referencial:
+724: Una sucursal en uso no puede desactivarse hasta que se reasignen o se cierren los registros asociados.
+725: Auditoría:
+726: Todas las operaciones de alta, modificación y desactivación registran usuario ( creadoPor / actualizadoPor ) y timestamps.
+727: Interfaz de Usuario
+728: Listado de Sucursales
+729: Tabla paginada con columnas:
+730: codigocodigonombrenombre│
+731: codigo
+732: codigo
+733: nombre
+734: nombre
+735: │
+736: │
+737: ││
+738: ciudadciudadestadoProvinciaestadoProvinciapaispaisestadoestado  Buscador y filtro por estado .
+739: ciudad
+740: ciudad
+741: estadoProvincia
+742: estadoProvincia
+743: pais
+744: pais
+745: estado
+746: estado
+747: Acciones: Editar, Desactivar — solo si no hay dependencias activas.
+748: Formulario de Alta/Edición
+749: Campos marcados con asterisco para obligatorios.
+750: codigocodigo  Validaciones en tiempo real (ej. feedback en
+751: codigo
+752: codigo
+753: Confirmación de Desactivación
+754: y email ).
+755: Modal que alerta sobre posibles referencias y solicita confirmación de cambio de estado.
+756: Módulo Usuarios y Roles
+757: El Módulo Usuarios y Roles controla la gestión de cuentas de empleados y sus permisos dentro del sistema, siendo fundamental para la seguridad y trazabilidad de las operaciones.
+758: usuariosusuariosEstructura de la Entidad ()
+759: usuarios
+760: usuarios
+761: Campo
+762: Tipo
+763: Descripción
+764: id
+765: int PK
+766: Identificador interno (autoincremental).
+767: codigo
+768: varchar(20)
+769: Código único público del usuario, p. ej.
+770: USR0047 .
+771: nombre
+772: varchar(100)
+773: Nombre completo o alias del usuario.
+774: email
+775: varchar(150)
+776: Correo electrónico (login) único.
+777: password
+778: varchar(255)
+779: Hash seguro de la contraseña.
+780: Campo
+781: Tipo
+782: Descripción
+783: rolId
+784: int FK
+785: Clave foránea a roles.id (define permisos: admin, supervisor, empleado, etc.).
+786: estado
+787: enum('activo','inactivo')
+788: Indica si la cuenta está habilitada ( activo ) o bloqueada/retirada ( inactivo ).
+789: lastLogin
+790: datetime
+791: Última fecha y hora de acceso exitoso.
+792: firma
+793: varchar(255)
+794: Ruta en S3 de la firma digital del usuario.
+795: cuotaMb
+796: int unsigned
+797: Límite de almacenamiento (MB) permitido para sus archivos; NULL = ilimitado.
+798: usoStorageBytes
+799: bigint
+800: Espacio usado actualmente (bytes).
+801: fechaCreacion
+802: datetime DEFAULT CURRENT_TIMESTAMP
+803: Fecha y hora en que se creó la cuenta.
+804: fechaActualizacion
+805: datetime ON UPDATE CURRENT_TIMESTAMP
+806: Fecha y hora de la última modificación de datos.
+807: creadoPor
+808: int FK
+809: Usuario que creó este registro ( usuarios.id ).
+810: actualizadoPor
+811: int FK NULL
+812: Usuario que lo actualizó por última vez ( usuarios.id ).
+813: El catálogo de roles ( roles ) incluye al menos las siguientes opciones:
+814: 1 – admin1 – admin2 – supervisor2 – supervisor3 – empleado3 – empleado
+815: 1 – admin
+816: 1 – admin
+817: 2 – supervisor
+818: 2 – supervisor
+819: 3 – empleado
+820: 3 – empleado
+821: Operaciones Soportadas
+822: Crear Usuario
+823: Entrada: JSON con nombre , email , password , rolId , creadoPor .
+824: Procesos:
+825: Validar unicidad de email .
+826: codigocodigoGenerar automáticamente
+827: codigo
+828: codigo
+829: con formato
+830: + cuatro dígitos correlativos.
+831: USRUSRpasswordpasswordHashear
+832: USR
+833: USR
+834: password
+835: password
+836: Insertar en
+837: Editar Usuario
+838: antes de almacenar.
+839: usuariosusuariosy devolver el nuevo registro (sin exponer password ).
+840: usuarios
+841: usuarios
+842: ididEntrada:en ruta y JSON con campos a actualizar ( nombre , email , password? , rolId ,
+843: id
+844: id
+845: estado , actualizadoPor ).
+846: Procesos:
+847: Si cambia email , verificar unicidad.
+848: Si se incluye password , hashear antes de guardar.
+849: fechaActualizacionfechaActualizacionUPDATE de usuarios , registrando
+850: fechaActualizacion
+851: fechaActualizacion
+852: Retornar datos actualizados (sin password ).
+853: Eliminar / Desactivar Usuario
+854: y actualizadoPor .
+855: ididEntrada:del usuario a desactivar.
+856: id
+857: id
+858: Validaciones Previas:
+859: Un usuario que haya creado registros críticos (gastos, cotizaciones, abonos, etc.) solo puede desactivarse, no borrarse físicamente, para mantener
+860: trazabilidad.
+861: Proceso:
+862: estadoestadoa inactivo .a inactivo .Cambiar
+863: estado
+864: estado
+865: a inactivo .
+866: a inactivo .
+867: actualizadoPoractualizadoPory fechaActualizacion .y fechaActualizacion .Registrar
+868: actualizadoPor
+869: actualizadoPor
+870: y fechaActualizacion .
+871: y fechaActualizacion .
+872: Reglas de Negocio y Validaciones
+873: Unicidad
+874: emailemailcodigocodigoydeben ser únicos.
+875: email
+876: email
+877: codigo
+878: codigo
+879: Integridad de Roles
+880: rolIdrolIddebe referenciar un registro existente en roles .
+881: rolId
+882: rolId
+883: Seguridad
+884: Contraseñas almacenadas con algoritmo fuerte (bcrypt).
+885: Sólo usuarios
+886: Trazabilidad
+887: creadoPorcreadoPoractualizadoPoractualizadoPory
+888: creadoPor
+889: creadoPor
+890: actualizadoPor
+891: actualizadoPor
+892: pueden iniciar sesión.
+893: activoactivomantienen la autoría de cambios.
+894: activo
+895: activo
+896: lastLoginlastLoginse actualiza en cada autenticación exitosa.
+897: lastLogin
+898: lastLogin
+899: Interfaz de Usuario
+900: Listado de Usuarios
+901: nombrenombreemailemailrolrolestadoestadofechaCreacionfechaCreacion Tabla con columnas:
+902: nombre
+903: nombre
+904: email
+905: email
+906: rol
+907: rol
+908: estado
+909: estado
+910: fechaCreacion
+911: fechaCreacion
+912: codigocodigo│
+913: codigo
+914: codigo
+915: │
+916: │
+917: ││
+918: Filtro por
+919: y búsqueda por
+920: o email .
+921: estadoestadonombrenombreestadoestadoa inactivo .a inactivo . Acciones: Editar, Desactivar — el botón “eliminarˮ cambia
+922: estado
+923: estado
+924: nombre
+925: nombre
+926: estado
+927: estado
+928: a inactivo .
+929: a inactivo .
+930: Formulario de Alta/Edición
+931: Campos obligatorios marcados.
+932: emailemailValidaciones en tiempo real paray longitud de password .
+933: email
+934: email
+935: rolrolSelector decon auto-completar de opciones.
+936: rol
+937: rol
+938: Gestión de Contraseña
+939: Modal o campo opcional para cambio de contraseña en edición.
+940: Módulo Cotizaciones
+941: El Módulo Cotizaciones gestiona el ciclo de vida de las propuestas de servicio o producto que se envían a los clientes.
+942: cotizacionescotizacionesEstructura de la Entidad ()
+943: cotizaciones
+944: cotizaciones
+945: Campo
+946: Tipo
+947: Descripción
+948: id
+949: int PK
+950: Identificador interno
+951: (autoincremental).
+952: codigoReferencia
+953: varchar(20)
+954: Código público con formato COT- XXXX .
+955: clienteId
+956: int FK
+957: Clave foránea a
+958: clientes.id .
+959: creadoPor
+960: int FK
+961: Usuario que generó la cotización
+962: ( usuarios.id ).
+963: sucursalId
+964: int FK
+965: Sucursal asociada ( sucursales.id ).
+966: fecha
+967: timestamp
+968: Fecha de emisión de la cotización.
+969: subtotal
+970: decimal(10,2)
+971: Suma de precios unitarios sin
+972: impuestos.
+973: Campo
+974: Tipo
+975: Descripción
+976: impuesto
+977: decimal(10,2)
+978: Cálculo total de IVA.
+979: total
+980: decimal(10,2)
+981: Monto final (subtotal + impuesto).
+982: estado
+983: enum('pendiente','aprobada','rechazada')
+984: Estado actual de la cotización.
+985: motivoRechazo
+986: text
+987: Texto explicativo en caso de rechazo.
+988: confirmacionCliente
+989: tinyint(1)
+990: Indica si el cliente confirmó la cotización ( 1 ) o no ( 0 ).
+991: observaciones
+992: text
+993: Notas internas o comentarios
+994: adicionales.
+995: operacion , puerto , bl , mercancia , contenedor
+996: varchar(255)
+997: Campos opcionales según logística o
+998: marítima (pueden
+999: quedar en N/A ).
+1000: fechaCreacion
+1001: datetime DEFAULT CURRENT_TIMESTAMP
+1002: Fecha de creación registro.
+1003: fechaActualizacion
+1004: datetime ON UPDATE CURRENT_TIMESTAMP
+1005: Fecha de última modificación.
+1006: actualizadoPor
+1007: int FK NULL
+1008: Usuario que modificó por última vez.
+1009: Operaciones Soportadas
+1010: GET /api/cotizacionesGET /api/cotizacionesListar Cotizaciones  Ruta:
+1011: GET /api/cotizaciones
+1012: GET /api/cotizaciones
+1013: Descripción: Obtiene paginación de cotizaciones con filtros de búsqueda.
+1014: Ver Detalle
+1015: GET /api/cotizaciones/:idGET /api/cotizaciones/:id Ruta:
+1016: GET /api/cotizaciones/:id
+1017: GET /api/cotizaciones/:id
+1018: detalledetalle Descripción: Devuelve objeto completo con campos de cabecera y arreglode ítems.
+1019: detalle
+1020: detalle
+1021: PUT /api/cotizaciones/:idPUT /api/cotizaciones/:idEditar Cotización  Ruta:
+1022: PUT /api/cotizaciones/:id
+1023: PUT /api/cotizaciones/:id
+1024: Entrada: JSON con clienteId , sucursalId , confirmacionCliente , observaciones , campos logísticos
+1025: detalledetalley(array de ítems con servicioProductosId , cantidad , precioUnitario , porcentajeIva ).
+1026: detalle
+1027: detalle
+1028: Restricción: Solo si estado ! 'aprobada' .
+1029: PATCH /api/cotizaciones/:id/estadoPATCH /api/cotizaciones/:id/estadoCambiar Estado  Ruta:
+1030: PATCH /api/cotizaciones/:id/estado
+1031: PATCH /api/cotizaciones/:id/estado
+1032: { estado: 'aprobada'|'pendiente'|'rechazada', motivoRechazo? { estado: 'aprobada'|'pendiente'|'rechazada', motivoRechazo?  Entrada:
+1033: { estado: 'aprobada'|'pendiente'|'rechazada', motivoRechazo? 
+1034: { estado: 'aprobada'|'pendiente'|'rechazada', motivoRechazo? 
+1035: Validación:
+1036: motivoRechazomotivoRechazo  Si rechazada ,
+1037: motivoRechazo
+1038: motivoRechazo
+1039: No cambiar si ya está
+1040: DELETE /api/cotizaciones/:idDELETE /api/cotizaciones/:idEliminar Cotización  Ruta:
+1041: DELETE /api/cotizaciones/:id
+1042: DELETE /api/cotizaciones/:id
+1043: obligatorio.
+1044: aprobadaaprobadao rechazada .o rechazada .
+1045: aprobada
+1046: aprobada
+1047: o rechazada .
+1048: o rechazada .
+1049: Restricción: Solo si estado ! 'aprobada' .
+1050: Reglas de Negocio y Validaciones
+1051: Formato de codigoReferencia : Debe seguir ^COT\-\d{4}$ .
+1052: Integridad Referencial:
+1053: clienteIdclienteIdsucursalIdsucursalIdy
+1054: clienteId
+1055: clienteId
+1056: sucursalId
+1057: sucursalId
+1058: pendiente → aprobadapendiente → aprobadaEstados Permitidos:  Transición
+1059: pendiente → aprobada
+1060: pendiente → aprobada
+1061: deben existir.
+1062: o rechazada ; no reversiones tras aprobación.
+1063: Tiempos de Respuesta:
+1064: GET /cotizacionesGET /cotizacionesdebe responder en 3 s para lotes de hasta 20 registros.
+1065: GET /cotizaciones
+1066: GET /cotizaciones
+1067: Interfaz de Usuario
+1068: Listado
+1069: Tabla en escritorio con columnas:
+1070: CódigoCódigoClienteCliente│
+1071: Código
+1072: Código
+1073: Cliente
+1074: Cliente
+1075: │
+1076: │
+1077: │
+1078: │
+1079: │
+1080: ││
+1081: FechaFechaSucursalSucursalSubtotalSubtotalIVAIVATotalTotalEstadoEstadoAccionesAccionesBotones de acción:
+1082: Fecha
+1083: Fecha
+1084: Sucursal
+1085: Sucursal
+1086: Subtotal
+1087: Subtotal
+1088: IVA
+1089: IVA
+1090: Total
+1091: Total
+1092: Estado
+1093: Estado
+1094: Acciones
+1095: Acciones
+1096: Ver detalle
+1097: Cambiar estado  Edita
+1098: Eliminar
+1099: Paginación y búsqueda en tiempo real.
+1100: Tarjetas
+1101: Vistas responsivas para tablet y móvil con resumen de campos clave y mismas acciones.
+1102: Modales
+1103: Detalle: muestra JSON de cabecera y lista de ítems con precios.
+1104: Editar: formulario con validaciones en tiempo real.
+1105: Cambio de Estado: selección de estado y, si procede, captura de motivo de rechazo.
+1106: Confirmación de Eliminación: alerta de acción irreversible.
+1107: Módulo Gastos
+1108: El Módulo Gastos gestiona la solicitud, control y seguimiento de los desembolsos realizados por la empresa.
+1109: gastosgastosEstructura de la Entidad ()
+1110: gastos
+1111: gastos
+1112: Campo
+1113: Tipo
+1114: Descripción
+1115: id
+1116: int PK
+1117: Identificador interno (autoincremental).
+1118: codigo
+1119: varchar(20)
+1120: Código público con formato G-000021 .
+1121: documento
+1122: varchar(255)
+1123: Ruta en S3 del archivo de factura o comprobante.
+1124: proveedorId
+1125: int FK
+1126: Clave foránea a proveedores.id
+1127: (opcional).
+1128: conceptoPago
+1129: varchar(100)
+1130: Descripción breve del concepto de gasto.
+1131: tipoGastoId
+1132: int FK
+1133: Clave foránea a tipos_gasto.id .
+1134: subtotal
+1135: decimal(10,2)
+1136: Monto antes de impuestos.
+1137: porcentajeIva
+1138: decimal(5,2)
+1139: Porcentaje de IVA aplicado.
+1140: Campo
+1141: Tipo
+1142: Descripción
+1143: impuesto
+1144: decimal(10,2)
+1145: Monto de impuestos calculado.
+1146: total
+1147: decimal(10,2)
+1148: Suma de subtotal + impuesto .
+1149: descripcion
+1150: text
+1151: Detalle ampliado o notas adicionales.
+1152: fecha
+1153: date
+1154: Fecha del gasto (formato dd/mm/yyyy
+1155: en UI).
+1156: sucursalId
+1157: int FK
+1158: Clave foránea a sucursales.id .
+1159: cotizacionId
+1160: int FK NULL
+1161: Clave foránea a cotizaciones.id (solo si es “rentableˮ).
+1162: moneda
+1163: varchar(10)
+1164: Moneda del gasto ( USD o VES ).
+1165: tasaCambio
+1166: decimal(10,4)
+1167: Tasa de cambio usada para conversión.
+1168: usuarioId
+1169: int FK
+1170: Usuario que registró el gasto ( usuarios.id ).
+1171: estado
+1172: enum('pendiente','aprobado','rechazado')
+1173: Estado del flujo de aprobación.
+1174: motivoRechazo
+1175: text NULL
+1176: Comentario si el gasto es rechazado.
+1177: createdAt
+1178: datetime DEFAULT CURRENT_TIMESTAMP
+1179: Fecha y hora de creación.
+1180: updatedAt
+1181: datetime ON UPDATE CURRENT_TIMESTAMP
+1182: Fecha y hora de última modificación.
+1183: Operaciones Soportadas
+1184: Crear Gasto
+1185: POST /api/gastosPOST /api/gastos Ruta:
+1186: POST /api/gastos
+1187: POST /api/gastos
+1188: gastosgastoscreatedAtcreatedAt  Descripción: Valida campos, sube comprobante a S3, calcula
+1189: gastos
+1190: gastos
+1191: createdAt
+1192: createdAt
+1193: impuestoimpuestoy total , inserta
+1194: impuesto
+1195: impuesto
+1196: registro en
+1197: y devuelve el objeto completo con id ,
+1198: y enlace a
+1199: documento .documento .
+1200: documento .
+1201: documento .
+1202: Ver Detalle
+1203: GET /api/gastos/:idGET /api/gastos/:id Ruta:
+1204: GET /api/gastos/:id
+1205: GET /api/gastos/:id
+1206: Descripción: Devuelve objeto completo con todos los campos y presenta botón
+1207: “Descargar Facturaˮ que obtiene el archivo indicado en  documento .
+1208: Editar Gasto
+1209: PUT /api/gastos/:idPUT /api/gastos/:id Ruta:
+1210: PUT /api/gastos/:id
+1211: PUT /api/gastos/:id
+1212: Restricción: Solo si estado = 'pendiente' .
+1213: Cambiar Estado
+1214: { estado: 'aprobado' }{ estado: 'aprobado' }{ estado: 'rechazado', motivoRechazo: 'texto explicativo' }{ estado: 'rechazado', motivoRechazo: 'texto explicativo' }PATCH /api/gastos/:id/estadoPATCH /api/gastos/:id/estadoRuta: Entrada:
+1215: { estado: 'aprobado' }
+1216: { estado: 'aprobado' }
+1217: { estado: 'rechazado', motivoRechazo: 'texto explicativo' }
+1218: { estado: 'rechazado', motivoRechazo: 'texto explicativo' }
+1219: PATCH /api/gastos/:id/estado
+1220: PATCH /api/gastos/:id/estado
+1221: motivoRechazomotivoRechazo Validación:
+1222: motivoRechazo
+1223: motivoRechazo
+1224: DELETE /api/gastos/:idDELETE /api/gastos/:idEliminar Gasto  Ruta:
+1225: DELETE /api/gastos/:id
+1226: DELETE /api/gastos/:id
+1227: obligatorio al rechazar.
+1228: Restricción: Solo si estado = 'pendiente' ; elimina registro y borra el archivo asociado de S3.
+1229: Reglas de Negocio y Validaciones
+1230: cotizacionIdcotizacionIdDependencias: Siestá presente, la cotización asociada debe estar en estado
+1231: cotizacionId
+1232: cotizacionId
+1233: aprobada .aprobada .
+1234: aprobada .
+1235: aprobada .
+1236: pendiente → aprobadopendiente → aprobadoTransiciones de Estado: Solo se permiten reversiones tras aprobación.
+1237: pendiente → aprobado
+1238: pendiente → aprobado
+1239: Cálculos Automáticos:
+1240: o pendiente → rechazado ; no hay
+1241: impuesto = subtotal × (porcentajeIva / 100)impuesto = subtotal × (porcentajeIva / 100)
+1242: impuesto = subtotal × (porcentajeIva / 100)
+1243: impuesto = subtotal × (porcentajeIva / 100)
+1244: total = subtotal + impuestototal = subtotal + impuesto
+1245: total = subtotal + impuesto
+1246: total = subtotal + impuesto
+1247: Unicidad de Código: Generado secuencialmente por día (p. ej.  G-000022 ).
+1248: Interfaz de Usuario
+1249: Proveedor No RentableProveedor No Rentable Listado Principal
+1250: Proveedor No Rentable
+1251: Proveedor No Rentable
+1252: TodosTodosOperativoOperativoFecha │ Código│ AccionesFecha │ Código│ AccionesProveedorProveedorConcepto PagoConcepto PagoFiltros rápidos:·· Tabla con columnas:
+1253: Todos
+1254: Todos
+1255: Operativo
+1256: Operativo
+1257: Fecha │ Código
+1258: │ Acciones
+1259: Fecha │ Código
+1260: │ Acciones
+1261: Proveedor
+1262: Proveedor
+1263: Concepto Pago
+1264: Concepto Pago
+1265: ││
+1266: ·
+1267: Servicio PrestadoServicio PrestadoSubtotalSubtotal│
+1268: Servicio Prestado
+1269: Servicio Prestado
+1270: Subtotal
+1271: Subtotal
+1272: │
+1273: ImpuestoImpuesto│
+1274: Impuesto
+1275: Impuesto
+1276: TotalTotalSucursalSucursalEstadoEstado││
+1277: Total
+1278: Total
+1279: Sucursal
+1280: Sucursal
+1281: Estado
+1282: Estado
+1283: Acciones:
+1284: Cambiar Estado
+1285: Ver Detalle (abre modal con botón “Descargar Facturaˮ)
+1286: Editar
+1287: Eliminar
+1288: Modales
+1289: Detalle: Muestra todos los campos y ofrece enlace para descargar el archivo de
+1290: documento .documento .
+1291: documento .
+1292: documento .
+1293: Cambio de Estado: Selección de nuevo estado y captura desi procede.
+1294: motivoRechazomotivoRechazo  Confirmación de Eliminación: Alerta que describe el gasto y el archivo que se borrará.
+1295: motivoRechazo
+1296: motivoRechazo
+1297: Módulo Solicitudes de Pago
+1298: El Módulo Solicitudes de Pago gestiona la generación, revisión y registro de pagos asociados a gastos aprobados, asegurando trazabilidad completa del flujo de cobro.
+1299: solicitudes_pagosolicitudes_pagoEstructura de la Entidad ()
+1300: solicitudes_pago
+1301: solicitudes_pago
+1302: Campo
+1303: Tipo
+1304: Descripción
+1305: id
+1306: int PK
+1307: Identificador interno (autoincremental).
+1308: codigo
+1309: varchar(20)
+1310: Código público con formato SP- 00001 .
+1311: gastoId
+1312: int FK
+1313: Clave foránea a gastos.id .
+1314: conceptoPago
+1315: varchar(100)
+1316: Descripción breve del motivo de la solicitud de pago.
+1317: usuarioSolicitaId
+1318: int FK
+1319: Usuario que crea la solicitud ( usuarios.id ).
+1320: usuarioRevisaId
+1321: int FK NULL
+1322: Usuario que revisa o rechaza (intermedio) la solicitud.
+1323: usuarioApruebaId
+1324: int FK NULL
+1325: Usuario que aprueba la solicitud para pago.
+1326: bancoId
+1327: int FK NULL
+1328: Clave foránea a bancos.id (medio por el que se efectuará el pago).
+1329: metodoPago
+1330: enum('Transferencia','Efectivo')
+1331: Método de pago seleccionado.
+1332: referenciaPago
+1333: varchar(100)
+1334: Número o referencia de la transacción.
+1335: rutaComprobante
+1336: varchar(255)
+1337: Ruta en S3 del comprobante digital subido.
+1338: comprobanteFirma
+1339: mediumblob
+1340: Firma digital asociada al comprobante (binario).
+1341: Campo
+1342: Tipo
+1343: Descripción
+1344: observaciones
+1345: text
+1346: Notas o comentarios adicionales del proceso.
+1347: proveedorId
+1348: int FK NULL
+1349: Clave foránea a proveedores.id ,
+1350: para identificar tercero receptor (si aplica).
+1351: montoTotal
+1352: decimal(10,2)
+1353: Monto solicitado, igual al total del gasto asociado.
+1354: montoPagado
+1355: decimal(18,2)
+1356: Monto efectivamente abonado hasta la fecha.
+1357: estado
+1358: enum('por_pagar','pagada','cancelada','rechazada')
+1359: Estado actual de la solicitud.
+1360: fechaSolicitud
+1361: timestamp DEFAULT CURRENT_TIMESTAMP
+1362: Fecha y hora en que se generó la solicitud.
+1363: fechaAprobacion
+1364: datetime NULL
+1365: Fecha y hora en que se aprobó la solicitud.
+1366: fechaPago
+1367: datetime NULL
+1368: Fecha y hora en que se registró el pago.
+1369: createdAt
+1370: datetime DEFAULT CURRENT_TIMESTAMP
+1371: Marca de tiempo de creación del registro.
+1372: updatedAt
+1373: datetime ON UPDATE CURRENT_TIMESTAMP
+1374: Marca de tiempo de la última modificación.
+1375: moneda
+1376: varchar(10)
+1377: Moneda en que se solicita el pago ( USD o VES ).
+1378: tasaCambio
+1379: decimal(10,4)
+1380: Tasa de cambio aplicada al momento de solicitud.
+1381: Operaciones Soportadas
+1382: POST /api/solicitudes-pagoPOST /api/solicitudes-pagoCrear Solicitud de Pago  Ruta:
+1383: POST /api/solicitudes-pago
+1384: POST /api/solicitudes-pago
+1385: por_pagarpor_pagar Descripción: Valida que el gasto exista y esté aprobado, genera codigo , sube
+1386: por_pagar
+1387: por_pagar
+1388: comprobante, inserta registro inicial en
+1389: Listar Solicitudes
+1390: GET /api/solicitudes-pagoGET /api/solicitudes-pago Ruta:
+1391: GET /api/solicitudes-pago
+1392: GET /api/solicitudes-pago
+1393: y devuelve el objeto completo.
+1394: limitlimit Descripción: Devuelve listado paginado o completo según parámetros page ,y filtro estado .
+1395: limit
+1396: limit
+1397: Ver Detalle
+1398: GET /api/solicitudes-pago/:idGET /api/solicitudes-pago/:id Ruta:
+1399: GET /api/solicitudes-pago/:id
+1400: GET /api/solicitudes-pago/:id
+1401: rutaComprobanterutaComprobante Descripción: Retorna todos los campos del registro, incluyendoy datos de usuarios relacionados, para su visualización en modal.
+1402: rutaComprobante
+1403: rutaComprobante
+1404: PATCH /api/solicitudes-pago/:id/pagarPATCH /api/solicitudes-pago/:id/pagarRegistrar Pago  Ruta:
+1405: PATCH /api/solicitudes-pago/:id/pagar
+1406: PATCH /api/solicitudes-pago/:id/pagar
+1407: usuarioApruebaIdusuarioApruebaId Descripción: Verifica que estado = 'por_pagar' , actualiza montoPagado , fechaPago , y cambia estado a pagada .
+1408: usuarioApruebaId
+1409: usuarioApruebaId
+1410: PATCH /api/solicitudes-pago/:id/estadoPATCH /api/solicitudes-pago/:id/estadoCambiar Estado  Ruta:
+1411: PATCH /api/solicitudes-pago/:id/estado
+1412: PATCH /api/solicitudes-pago/:id/estado
+1413: fechaAprobacionfechaAprobacion Entrada:
+1414: fechaAprobacion
+1415: fechaAprobacion
+1416: { estado: 'cancelada'|'rechazada', usuarioRevisaId: X { estado: 'cancelada'|'rechazada', usuarioRevisaId: X 
+1417: { estado: 'cancelada'|'rechazada', usuarioRevisaId: X 
+1418: { estado: 'cancelada'|'rechazada', usuarioRevisaId: X 
+1419: Validación: Solo si estado = 'por_pagar' . Registraal rechazar o cancelar y
+1420: usuarioRevisaId .usuarioRevisaId .
+1421: usuarioRevisaId .
+1422: usuarioRevisaId .
+1423: Eliminar Solicitud
+1424: DELETE /api/solicitudes-pago/:idDELETE /api/solicitudes-pago/:id Ruta:
+1425: DELETE /api/solicitudes-pago/:id
+1426: DELETE /api/solicitudes-pago/:id
+1427: Restricción: Solo si estado = 'por_pagar' ; elimina físicamente registro y borra comprobante de S3.
+1428: Reglas de Negocio y Validaciones
+1429: Dependencia con Gastos: La solicitud solo puede crearse para un gasto en estado
+1430: aprobado .aprobado .
+1431: aprobado .
+1432: aprobado .
+1433: Unicidad de codigo : Generado en secuencia diaria (p. ej. SP-00005 ).
+1434: Montos:
+1435: montoPagadomontoPagadono puede superar montoTotal .
+1436: montoPagado
+1437: montoPagado
+1438: montoPagado = montoTotalmontoPagado = montoTotalTras pago,para cambiar a pagada .
+1439: montoPagado = montoTotal
+1440: montoPagado = montoTotal
+1441: Transiciones de Estado:
+1442: por_pagar → pagadapor_pagar → pagadapor_pagar → canceladapor_pagar → canceladapor_pagar → rechazadapor_pagar → rechazada(al registrar pago). o
+1443: por_pagar → pagada
+1444: por_pagar → pagada
+1445: por_pagar → cancelada
+1446: por_pagar → cancelada
+1447: por_pagar → rechazada
+1448: por_pagar → rechazada
+1449: No reversibles tras pagada .
+1450: Interfaz de Usuario
+1451: (al revisar).
+1452: Listado de Solicitudes
+1453: Fecha SolicitudFecha SolicitudGasto/ProveedorGasto/ProveedorMonto TotalMonto TotalMonto PagadoMonto PagadoSaldoSaldoMonedaMoneda Controles de búsqueda y filtro por estado .  Tabla con columnas:
+1454: Fecha Solicitud
+1455: Fecha Solicitud
+1456: Gasto/Proveedor
+1457: Gasto/Proveedor
+1458: Monto Total
+1459: Monto Total
+1460: Monto Pagado
+1461: Monto Pagado
+1462: Saldo
+1463: Saldo
+1464: Moneda
+1465: Moneda
+1466: CódigoCódigo│
+1467: Código
+1468: Código
+1469: EstadoEstado│
+1470: Estado
+1471: Estado
+1472: │
+1473: │
+1474: │
+1475: │
+1476: ││
+1477: AccionesAcciones  Acciones disponibles según estado:
+1478: Acciones
+1479: Acciones
+1480: Ver Detalle– abre modal con todos los datos y enlace “Descargar Comprobanteˮ.
+1481: Registrar Pago– habilitado solo si por_pagar .
+1482: Cancelar/Rechazar– abre modal de revisión.
+1483: Modales
+1484: Ver Solicitud: muestra campos completos y botón de descarga de rutaComprobante .
+1485: montoTotalmontoTotalRegistrar Pago: formulario compacto para confirmar pago, mostrandoy captura de datos necesarios.
+1486: montoTotal
+1487: montoTotal
+1488: Revisión de Estado: selección de Cancelar o Rechazar y captura de motivo.
+1489: Confirmación de Eliminación: alerta que indica el comprobante que se borrará.
+1490: Módulo Cuentas por Cobrar (CxC)
+1491: El Módulo Cuentas por Cobrar gestiona las obligaciones de pago pendientes de los clientes una vez que sus cotizaciones han sido aprobadas, permitiendo registrar abonos parciales o totales y consultar saldos.
+1492: cuentas_por_cobrarcuentas_por_cobrarEstructura de la Entidad ()
+1493: cuentas_por_cobrar
+1494: cuentas_por_cobrar
+1495: Campo
+1496: Tipo
+1497: Descripción
+1498: id
+1499: int PK
+1500: Identificador interno (autoincremental).
+1501: codigo
+1502: varchar(20)
+1503: Código público con formato CXC-00001 .
+1504: clienteId
+1505: int FK
+1506: Clave foránea a clientes.id .
+1507: cotizacionId
+1508: int FK
+1509: Clave foránea a cotizaciones.id (origen de la obligación).
+1510: monto
+1511: decimal(10,2)
+1512: Monto original a cobrar (igual al total de la cotización).
+1513: Campo
+1514: Tipo
+1515: Descripción
+1516: saldoRestante
+1517: decimal(10,2)
+1518: Monto pendiente de pago (monto − sumatoria de abonos).
+1519: estado
+1520: enum('pendiente','pagado')
+1521: Estado de la cuenta: pendiente de abono o pagada (saldo  0).
+1522: fechaEmision
+1523: date
+1524: Fecha en que se generó la obligación (emisión de la cotización).
+1525: fechaVencimiento
+1526: date
+1527: Fecha límite de pago.
+1528: fechaPago
+1529: datetime NULL
+1530: Fecha en que se completó el pago total (se establece cuando saldoRestante  0).
+1531: createdAt
+1532: datetime DEFAULT CURRENT_TIMESTAMP
+1533: Marca de tiempo de creación del registro.
+1534: updatedAt
+1535: datetime ON UPDATE CURRENT_TIMESTAMP
+1536: Marca de tiempo de última modificación (por abonos o cambios de estado).
+1537: Operaciones Soportadas
+1538: GET /api/cuentas?cliente_id=<idCliente>GET /api/cuentas?cliente_id=<idCliente>Listar Cuentas por Cobrar  Ruta:
+1539: GET /api/cuentas?cliente_id=<idCliente>
+1540: GET /api/cuentas?cliente_id=<idCliente>
+1541: Descripción: Devuelve un listado paginado de cuentas por cobrar de un cliente, con campos: codigo , monto , saldoRestante , estado , fechaEmision , fechaVencimiento .
+1542: GET /api/cuentas/:idGET /api/cuentas/:idsaldoRestantesaldoRestanteVer Detalle de Cuenta  Ruta:
+1543: GET /api/cuentas/:id
+1544: GET /api/cuentas/:id
+1545: saldoRestante
+1546: saldoRestante
+1547: Descripción: Retorna todos los datos de la cuenta, incluyendo de vencimiento.
+1548: PATCH /api/cuentas/:id/abonoPATCH /api/cuentas/:id/abonoRegistrar Abono  Ruta:
+1549: PATCH /api/cuentas/:id/abono
+1550: PATCH /api/cuentas/:id/abono
+1551: y fecha
+1552: saldoRestantesaldoRestanteestadoestadoDescripción: Valida método de pago, sube comprobante si aplica, registra un abono
+1553: saldoRestante
+1554: saldoRestante
+1555: estado
+1556: estado
+1557: y actualiza
+1558: y
+1559: de la cuenta.
+1560: GET /api/cuentas/totales/:cliente_idGET /api/cuentas/totales/:cliente_idObtener Totales por Cliente  Ruta:
+1561: GET /api/cuentas/totales/:cliente_id
+1562: GET /api/cuentas/totales/:cliente_id
+1563: debedebe  Descripción: Calcula y devuelve los totales de
+1564: debe
+1565: debe
+1566: haberhabersaldosaldo( debe – haber ).( debe – haber ).(sumatoria de abonos) y
+1567: haber
+1568: haber
+1569: saldo
+1570: saldo
+1571: ( debe – haber ).
+1572: ( debe – haber ).
+1573: Listar Clientes con CxC Activas
+1574: (suma de montos pendientes),
+1575: GET /api/cuentas/clientesGET /api/cuentas/clientes Ruta:
+1576: GET /api/cuentas/clientes
+1577: GET /api/cuentas/clientes
+1578: Descripción: Devuelve la lista de clientes que tienen al menos una cuenta por cobrar en estado pendiente .
+1579: Reglas de Negocio y Validaciones
+1580: Origen Automático: Las cuentas se generan al aprobar una cotización; por tanto, no se admite creación manual.
+1581: Abonos:
+1582: pagadopagado  No se permite abonar más que el saldoRestante .
+1583: pagado
+1584: pagado
+1585: saldoRestantesaldoRestante Cada abono actualiza el y registra fechaPago .
+1586: saldoRestante
+1587: saldoRestante
+1588: Estado:
+1589: Transición única: pendiente → pagado .  No se permite reversión tras pago.
+1590: Tiempos de Respuesta:
+1591: y, si alcanza cero, marca la cuenta como
+1592: Listados y totales deben responder en  2 s aun con 50 cuentas por cliente.
+1593: Interfaz de Usuario
+1594: Selector de Cliente
+1595: Desplegable con códigos y nombres de clientes que tienen cuentas pendientes.
+1596: Totales
+1597: Panel con campos de lectura:
+1598: montomontoDebe: suma de todos losde cuentas pendientes.
+1599: monto
+1600: monto
+1601: Haber: sumatoria de abonos realizados.
+1602: Saldo: diferencia ( debe – haber ).
+1603: Tabla de Cuentas
+1604: Fila por cada cuenta: muestra los valores formateados.
+1605: Acciones:
+1606: Registrar Abono– abre modal de abono.
+1607: Ver Detalle – expande o abre modal con información completa.
+1608: Modales
+1609: Registrar Abono: formulario que valida monto y método de pago.
+1610: Error: si se intenta abonar una cuenta ya pagada, muestra mensaje de error.
+1611: Módulo Administrador de Archivos
+1612: El Módulo Administrador de Archivos centraliza la gestión de documentos digitales
+1613: (facturas, comprobantes, firmas, versiones históricas) asociadas a registros del sistema, garantizando control de versiones, trazabilidad y cumplimiento de cuotas de
+1614: almacenamiento.
+1615: archivosarchivosEstructura de la Entidad ()
+1616: archivos
+1617: archivos
+1618: Campo
+1619: Tipo
+1620: Descripción
+1621: id
+1622: int PK
+1623: Identificador interno (autoincremental).
+1624: registroTipo
+1625: enum('firmas','facturasGastos','comprobantesPagos','abonosCXC')
+1626: Tipo de entidad
+1627: asociada (usuarios, gastos, pagos, CxC).
+1628: registroId
+1629: int
+1630: Clave foránea al registro asociado.
+1631: nombreOriginal
+1632: varchar(255)
+1633: Nombre del archivo al subirlo.
+1634: extension
+1635: varchar(10)
+1636: Extensión del archivo ( png , pdf , etc.).
+1637: tamanioBytes
+1638: bigint unsigned
+1639: Peso en bytes.
+1640: numeroVersion
+1641: int
+1642: Versión dentro de su grupo (1  inicial).
+1643: rutaS3
+1644: varchar(500)
+1645: Clave/URL relativa en el bucket S3.
+1646: estado
+1647: enum('activo','reemplazado','eliminado','borrado')
+1648: Estado lógico: activo, sustituido, enviado a papelera o purgado.
+1649: eliminadoEn
+1650: datetime NULL
+1651: Fecha de soft-delete.
+1652: subidoPor
+1653: int FK
+1654: Usuario que realizó la carga.
+1655: creadoEn
+1656: datetime DEFAULT CURRENT_TIMESTAMP
+1657: Fecha de carga inicial.
+1658: actualizadoEn
+1659: datetime ON UPDATE CURRENT_TIMESTAMP
+1660: Fecha de última modificación de
+1661: Campo
+1662: Tipo
+1663: Descripción
+1664: metadatos o estado.
+1665: grupoArchivoId
+1666: int FK NULL
+1667: Identificador del grupo de versiones al que pertenece.
+1668: Operaciones Soportadas
+1669: POST /api/archivosPOST /api/archivosSubir Archivo  Ruta:
+1670: POST /api/archivos
+1671: POST /api/archivos
+1672: Descripción: Recibe archivo vía Multer, crea o asigna grupoArchivo , valida cuota de almacenamiento, guarda metadatos y sube a S3.
+1673: GET /api/archivosGET /api/archivosListar Archivos  Ruta:
+1674: GET /api/archivos
+1675: GET /api/archivos
+1676: Descripción: Paginación y búsqueda por nombre, mostrando id , nombreOriginal ,
+1677: extension , tamanioBytes , creadoEn , subidoPor , registroTipo , registroId .
+1678: GET /api/archivos/:id/descargarGET /api/archivos/:id/descargarDescargar Archivo Activo  Ruta:
+1679: GET /api/archivos/:id/descargar
+1680: GET /api/archivos/:id/descargar
+1681: Descripción: Genera URL pre-firmada de lectura, registra evento de descarga y
+1682: nombreOriginalnombreOriginaldevuelve
+1683: nombreOriginal
+1684: nombreOriginal
+1685: PUT /api/archivos/:registroTipo/:registroId/sustituirPUT /api/archivos/:registroTipo/:registroId/sustituirSustituir Archivo  Ruta:
+1686: PUT /api/archivos/:registroTipo/:registroId/sustituir
+1687: PUT /api/archivos/:registroTipo/:registroId/sustituir
+1688: y url .
+1689: Descripción: Mueve S3 del activo a papelera, marca estado reemplazado , crea nueva versión en grupo y ajusta cuota.
+1690: DELETE /api/archivos/:idDELETE /api/archivos/:idestadoestadoEliminar (Soft-Delete)  Ruta:
+1691: DELETE /api/archivos/:id
+1692: DELETE /api/archivos/:id
+1693: estado
+1694: estado
+1695: Descripción: Cambia evento.
+1696: PATCH /api/archivos/:id/restaurarPATCH /api/archivos/:id/restaurarRestaurar de Papelera  Ruta:
+1697: PATCH /api/archivos/:id/restaurar
+1698: PATCH /api/archivos/:id/restaurar
+1699: a eliminado , reduce uso de almacenamiento y registra
+1700: papelera/papelera/ Descripción: Verifica permisos, mueve objeto desde reemplaza versión actual si existe y audita.
+1701: papelera/
+1702: papelera/
+1703: Listar Historial de Versiones
+1704: en S3, marca activo ,
+1705: GET /api/archivos/grupo/:grupoArchivoId/versionesGET /api/archivos/grupo/:grupoArchivoId/versiones Ruta:
+1706: GET /api/archivos/grupo/:grupoArchivoId/versiones
+1707: GET /api/archivos/grupo/:grupoArchivoId/versiones
+1708: Descripción: Devuelve todas las versiones (activa, reemplazadas, eliminadas) con metadatos y URL pre-firmadas.
+1709: GET /api/versiones/:versionId/descargarGET /api/versiones/:versionId/descargarDescargar Versión Específica  Ruta:
+1710: GET /api/versiones/:versionId/descargar
+1711: GET /api/versiones/:versionId/descargar
+1712: Descripción: Igual que descargar activo, pero para versión histórica; registra
+1713: evento.
+1714: Restaurar Versión
+1715: PATCH /api/versiones/:versionId/restaurarPATCH /api/versiones/:versionId/restaurar Ruta:
+1716: PATCH /api/versiones/:versionId/restaurar
+1717: PATCH /api/versiones/:versionId/restaurar
+1718: Descripción: Clona la versión a S3 como nueva versión activa, actualiza estado de anteriores y ajusta cuota.
+1719: DELETE /api/archivos/papelera/vaciarDELETE /api/archivos/papelera/vaciarPurgar Papelera  Ruta:
+1720: DELETE /api/archivos/papelera/vaciar
+1721: DELETE /api/archivos/papelera/vaciar
+1722: Descripción: Solo Admin, elimina físicamente todos los objetos en papelera y versiones, restaura cuotas y mantiene auditoria.
+1723: Reglas de Negocio y Validaciones
+1724: cuotaMbcuotaMbControl de Cuota: Cada usuario cuenta con
+1725: cuotaMb
+1726: cuotaMb
+1727: restauraciones validan no superar dicha cuota.
+1728: y usoStorageBytes ; nuevas cargas o
+1729: Permisos: Solo Admin y Supervisor pueden gestionar archivos de otros usuarios; usuarios normales solo sus propios archivos.
+1730: Versionado Forzado: Cada sustitución o restauración crea un nuevo numeroVersion .
+1731: Integridad de Grupo: No se permite purgar versiones activas sin moverlas primero a papelera.
+1732: Auditoría Completa: Todas las acciones (subida, descarga, sustitución, eliminación, restauración) generan registros en eventosArchivo .
+1733: Interfaz de Usuario
+1734: Resumen de Métricas
+1735: Almacenamiento Utilizado: Tarjeta con visualización de total bytes de todas las versiones
+1736: Total de Versiones: Tarjeta con número de versiones históricas
+1737: Versiones del Mes: Tarjeta con conteo de nuevas versiones en el mes actual
+1738: Vista de Detalle de Archivo
+1739: Encabezado con icono según tipo, nombre, versión activa y estado
+1740: Panel de metadatos (tipo, tamaño, última modificación, dueño, ruta S3).
+1741: Tabla de Archivos Activos
+1742: Paginación, búsqueda y filtros por tipo y usuario  Acciones: Ver, Descargar, Sustituir, Eliminar.
+1743: Árbol de Carpetas
+1744: rutaS3rutaS3GETGETExplorador jerárquico decon carpetas y archivos, recibiendo datos desde
+1745: rutaS3
+1746: rutaS3
+1747: GET
+1748: GET
+1749: /api/archivos/arbol ./api/archivos/arbol .
+1750: /api/archivos/arbol .
+1751: /api/archivos/arbol .
+1752: Historial de Versiones
+1753: Tabla responsiva con paginación y búsqueda, resaltando versión activa y permitiendo descargar o navegar a otra versión
+1754: Vistas en tarjeta para tablet y móvil con mismas funcionalidades.
+1755: Modales
+1756: Confirmación de Sustitución/Eliminación: alerta de acción irreversible.
+1757: Restauración de Versión: selecciona versión a restaurar y confirma.
+1758: Error de Permisos o Cuota: modal explicativo con mensaje de error.
+1759: Módulo Crear Registro
+1760: El Módulo Crear Registro unifica la lógica de inicio de nuevos procesos de Cotización o Gasto, proporcionando al usuario un único punto de entrada que adapta dinámicamente el formulario según el tipo seleccionado.
+1761: Estructura de los Datos
+1762: Campo
+1763: Tipo
+1764: Descripción
+1765: tipo
+1766: string ( cotizacion |
+1767: gasto )
+1768: Indica si se va a registrar una cotización o un gasto.
+1769: Para ambos
+1770: usuario_id
+1771: int
+1772: Identificador del usuario que crea el registro.
+1773: Campo
+1774: Tipo
+1775: Descripción
+1776: sucursal_id
+1777: int
+1778: Sucursal desde la cual se realiza el registro.
+1779: Adicionales
+1780: Cotización
+1781: cliente_id
+1782: int
+1783: Cliente al que se dirige la cotización.
+1784: detalle
+1785: array
+1786: Lista de ítems con servicio_productos_id ,
+1787: cantidad , precio_unitario , porcentaje_iva .
+1788: observaciones
+1789: string
+1790: Notas y comentarios internos.
+1791: Campos logísticos ( operacion , puerto , bl , mercancia , contenedor )
+1792: string
+1793: Opcionales según necesidad.
+1794: Gasto
+1795: proveedor_id
+1796: int | null
+1797: Proveedor asociado (si aplica).
+1798: tipo_gasto_id
+1799: int
+1800: Tipo de gasto (define si es rentable o no).
+1801: concepto_pago
+1802: string
+1803: Descripción breve del gasto.
+1804: descripcion
+1805: string
+1806: Detalle ampliado del gasto.
+1807: fecha
+1808: date
+1809: Fecha del gasto.
+1810: moneda
+1811: string ( USD | VES )
+1812: Moneda en que se registra.
+1813: tasa_cambio
+1814: decimal
+1815: Tasa de cambio aplicada.
+1816: Adjunto
+1817: file
+1818: binary
+1819: (multipart/form- data)
+1820: Archivo de factura o comprobante (solo para gastos).
+1821: Operaciones Soportadas
+1822: GET /api/registros/datosGET /api/registros/datosObtener Datos para Formulario  Ruta:
+1823: GET /api/registros/datos
+1824: GET /api/registros/datos
+1825: Descripción: Retorna catálogos necesarios ( servicios , clientes , proveedores ) y opciones de tipo de registro ( Cotización , Gasto ).
+1826: POST /api/registrosPOST /api/registrosCrear Registro  Ruta:
+1827: POST /api/registros
+1828: POST /api/registros
+1829: Descripción:
+1830: combinedDatacombinedDataRecibecon todos los campos según tipo .
+1831: combinedData
+1832: combinedData
+1833: Si tipo = 'gasto' : ejecuta flujo de creación de gasto, sube comprobante a S3,
+1834: registra metadatos en archivos , actualiza cuota de usuario y genera código único.
+1835: Si tipo = 'cotizacion' : ejecuta flujo de creación de cotización, inserta cabecera en cotizaciones , detalle en detalle_cotizacion , ajusta stock de productos y genera código único.
+1836: Retorna: { message, registro_id, codigo, tipo } .
+1837: POST /api/registros/vista-previaPOST /api/registros/vista-previaVista Previa de Cotización  Ruta:
+1838: POST /api/registros/vista-previa
+1839: POST /api/registros/vista-previa
+1840: Descripción: Genera PDF en memoria usando plantilla HTML y Puppeteer para previsualizar la cotización antes de guardar.
+1841: Reglas de Negocio y Validaciones
+1842: cotizacioncotizacionTipo Válido: Solo
+1843: cotizacion
+1844: cotizacion
+1845: Datos Obligatorios:
+1846: o gasto ; de lo contrario retorna error 400.
+1847: Para gastos: tipo_gasto_id , subtotal , porcentaje_iva , fecha , sucursal_id , usuario_id .
+1848: Para cotizaciones: cliente_id ,
+1849: Integridad Referencial:
+1850: proveedor_idproveedor_idcliente_id , sucursal_id , tablas.
+1851: proveedor_id
+1852: proveedor_id
+1853: no vacío, usuario_id .
+1854: detalledetalleservicio_productos_idservicio_productos_id(si aplica) y cada
+1855: detalle
+1856: detalle
+1857: servicio_productos_id
+1858: servicio_productos_id
+1859: deben existir en sus
+1860: Transacciones Atómicas: Todo el flujo de gasto se ejecuta dentro de una transacción; ante fallo se revierte y se elimina cualquier archivo subido.
+1861: Cacheo: Los datos de catálogo ( servicios , clientes , proveedores , tiposRegistro ) se almacenan en memoria con TTL para mejorar rendimiento.
+1862: Interfaz de Usuario
+1863: Selector de Tipo de Registro
+1864: Dropdown inicial con opciones: Cotización · Gasto.
+1865: Formulario Dinámico
+1866: Al seleccionar Cotización: muestra campos de cliente, detalle de ítems (lupa + cantidad + precio), observaciones y botones de previsualizar y registrar.
+1867: Al seleccionar Gasto: muestra campos de tipo de gasto, proveedor (si aplica),
+1868: concepto, monto, IVA, fecha, sucursal, botón de adjuntar comprobante y registrar.
+1869: Campos con Autocompletar
+1870: Cliente y proveedor se buscan por código o nombre.
+1871: Servicios/Productos se seleccionan desde catálogo con búsqueda integrada.
+1872: Validaciones en Tiempo Real
+1873: Feedback inmediato en campos numéricos, fechas y selección obligatoria antes de habilitar “Registrarˮ.
+1874: Botones de Acción
+1875: Previsualizar Cotización: abre PDF en pestaña o modal.
+1876: Registrar: envía petición POST; muestra spinner y notificación de éxito o error.
+1877: Módulo Gestor de Eventos
+1878: El Módulo Gestor de Eventos tendrá como objetivo centralizar y exponer en tiempo real las acciones realizadas sobre los registros críticos (creación, edición, eliminación y descargas), tanto en la base de datos como en el sistema de archivos.
+1879: Estado: Actualmente en fase de desarrollo, pendiente de definición de esquema y APIs finales.
+1880: Funcionalidad Prevista
+1881: Captura de Eventos
+1882: Registrar cada operación relevante (usuario, acción, entidad, timestamp).
+1883: Almacenamiento
+1884: Modelo eventoscreatedAt .Modelo eventoscreatedAt .con campos como id , registroTipo , registroId , usuarioId , accion , detalle ,
+1885: Modelo eventos
+1886: createdAt .
+1887: Modelo eventos
+1888: createdAt .
+1889: Consulta y Filtrado
+1890: Endpoints para listar eventos por tipo ( clientes , gastos , archivos , etc.), rango de fechas, usuario y acción.
+1891: Interfaz de Usuario
+1892: Dashboard con tabla paginada de eventos.
+1893: Filtros dinámicos y búsqueda en tiempo real.
+1894: Posibilidad de exportar historiales en CSV o PDF.
+1895: Próximos Pasos
+1896: Diseño de Esquema: Definir tablas y relaciones en la base de datos.
+1897: Implementación de Endpoints: Crear rutas REST ( GET /api/eventos , GET /api/eventos/:id ).
+1898: Integración en Middlewares: Disparar registro de eventos desde controladores y capa de servicios.
+1899: Desarrollo de UI: Construir componentes React para visualización y filtrado.
