@@ -1,107 +1,83 @@
-# Sistema de Cotización y Control de Gastos
+# Sistema de Cotización y Control de Gastos
 
-Monorepo Node + React que gestiona clientes, cotizaciones, gastos y solicitudes de pago.  Incluye: API REST (Express + MySQL + S3) y SPA (React + Vite).  Listo para desarrollo local, contenedores Docker y despliegue (Netlify + Railway/Render).
+Aplicación web full stack para la gestión de clientes, cotizaciones, gastos y solicitudes de pago.
 
-# Estructura del proyecto
-/
-├─ Backend/              # API REST – Express, Sequelize
-│  ├─ src/
-│  ├─ package.json       # scripts, dependencias
-│  └─ Dockerfile         # runtime (multi‑stage) ①
+El sistema permite centralizar procesos administrativos y financieros mediante una interfaz web conectada a una API REST y una base de datos MySQL.
+
+## Arquitectura
+
+El proyecto está dividido en dos aplicaciones:
+
+- `Frontend/` — SPA desarrollada con React y Vite.
+- `Backend/` — API REST desarrollada con Node.js y Express.
+
+## Tecnologías
+
+### Frontend
+
+- React 19
+- Vite 7
+- Tailwind CSS 4
+- React Router
+- Axios
+- Framer Motion
+- Recharts
+- Flowbite
+- Styled Components
+- Lucide React
+
+### Backend
+
+- Node.js 22
+- Express 5
+- MySQL
+- Sequelize
+- Redis
+- bcrypt
+- Express Session
+- Multer
+- AWS S3
+- PDFKit
+- Puppeteer
+- Node Cron
+
+## Funcionalidades
+
+- Gestión de clientes.
+- Creación y administración de cotizaciones.
+- Registro y control de gastos.
+- Gestión de solicitudes de pago.
+- Autenticación y manejo de sesiones.
+- Almacenamiento de documentos y archivos.
+- Generación de documentos PDF.
+- Visualización de información mediante gráficos.
+- Gestión de comprobantes y facturas.
+- Integración con almacenamiento en AWS S3.
+- API REST para comunicación entre frontend y backend.
+
+## Estructura del proyecto
+
+```text
+Sistema_de_Cotizacion_y_gastos/
+├── Backend/
+│   └── src/
+│       ├── api/
+│       ├── config/
+│       ├── controllers/
+│       ├── jobs/
+│       ├── Middleware/
+│       ├── routes/
+│       ├── services/
+│       └── utils/
 │
-├─ Frontend/             # SPA React – Vite + Tailwind
-│  ├─ src/
-│  ├─ vite.config.js
-│  ├─ package.json       # scripts, dependencias
-│  └─ Dockerfile         # Nginx con build estático ② (opcional)
+├── Frontend/
+│   └── src/
+│       ├── api/
+│       ├── components/
+│       ├── hooks/
+│       ├── pages/
+│       ├── services/
+│       └── Styles/
 │
-├─ docker-compose.yml    # desarrollo local (MySQL + API + Web)
-├─ netlify.toml          # build para Netlify (solo Frontend)
-└─ README.md
-
-# Requisitos previos
-
-Herramienta
-
-Versión recomendada
-
-Node.js ≥ 20 LTS
-
-npm ≥ 10
-
-Docker & Docker Compose (para entorno contenedorizado)
-
-MySQL 8 .x 
-
-# Variables de entorno
-
-# Base de datos
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=password
-DB_NAME=sistema_cotizacion
-
-# Sesiones
-SESSION_SECRET=unSecretoMuyFuerte
-FRONTEND_URL=http://localhost:5173       # CORS
-
-# AWS S3 – facturas, comprobantes, firmas
-AWS_ACCESS_KEY_ID=xxxxxxxxx
-AWS_SECRET_ACCESS_KEY=xxxxxxxxx
-AWS_REGION=us-east-1
-S3_BUCKET=sistema-cotizacion-gastos
-
-# Puppeteer (chromium sin sandbox)
-CHROMIUM_PATH=/usr/bin/chromium-browser  # solo en Docker
-
-# Frontend
-VITE_API_URL=http://localhost:3000/api
-
-# Instalación local 
-# Clonar
-$ git clone https://github.com/Frany28/Sistema_de_Cotizacion_y_gastos.git
-$ cd Sistema_de_Cotizacion_y_gastos
-
-# Backend
-$ cd Backend && npm install
-$ npm run dev         # nodemon src/server.js (puerto 3000)
-
-# Nueva terminal – Frontend
-$ cd ../Frontend && npm install
-$ npm run dev         # Vite (puerto 5173)
-
-#  Scripts npm relevantes
-
-# Backend
-
-npm run dev
-
-npm start
-
-npm run lint
-
-# Frontend
-
-npm run dev
-
-npm run build
-
-npm run preview
-
-# Despliegue
-
-# Frontend
-
-Netlify
-
-Conectar repo → Base =Frontend / Build =npm run build / Publish =dist
-
-# Backend
-
-Vercel
-
-
-# Base de datos
-
-AWS S3
+├── netlify.toml
+└── README.md
