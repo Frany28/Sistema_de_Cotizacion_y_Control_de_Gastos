@@ -21,12 +21,54 @@ import {
 } from "../Middleware/verificarPermiso.js";
 import { validarGasto } from "../Middleware/validarGasto.js";
 import { validarCuota } from "../Middleware/validarCuota.js";
+import db from "../config/database.js";
+import { obtenerScopeSucursalCache } from "../utils/cacheMemoria.js";
+import { validarContenidoArchivo } from "../Middleware/validarContenidoArchivo.js";
 
 const router = express.Router();
 
+const validarAccesoGasto = async (req, res, next) => {
+  try {
+    const scopeSucursal = obtenerScopeSucursalCache(req);
+    if (!scopeSucursal) {
+      return res
+        .status(403)
+        .json({ message: "Tu usuario no tiene sucursal asignada." });
+    }
+
+    const esAdmin = Number(req.user?.rol_id) === 1;
+    const filtroSucursal =
+      esAdmin && scopeSucursal === "todas" ? "" : " AND sucursal_id = ?";
+    const parametros =
+      esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
+    const [[gasto]] = await db.execute(
+      `SELECT id FROM gastos WHERE id = ?${filtroSucursal} LIMIT 1`,
+      [req.params.id, ...parametros],
+    );
+
+    if (!gasto) {
+      return res.status(404).json({ message: "Gasto no encontrado" });
+    }
+
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+};
+
 // Rutas Públicas
-router.get("/proveedores", getProveedores);
-router.get("/tipos", getTiposGasto);
+router.get(
+  "/proveedores",
+  autenticarUsuario,
+  verificarPermiso("verGastos"),
+  getProveedores,
+);
+router.get(
+  "/tipos",
+  autenticarUsuario,
+  verificarPermiso("verGastos"),
+  getTiposGasto,
+);
 
 // Rutas Protegidas
 router.get("/", autenticarUsuario, verificarPermiso("verGastos"), getGastos);
@@ -42,8 +84,10 @@ router.post(
   "/:id/comprobante",
   autenticarUsuario,
   verificarPermiso("editarGasto"),
+  validarAccesoGasto,
   validarCuota,
   uploadComprobante.single("comprobante"),
+  validarContenidoArchivo,
   async (req, res) => {
     try {
       const idGasto = req.params.id;
@@ -93,6 +137,7 @@ router.put(
   verificarPermiso("editarGasto"),
   scopeEdicionGasto,
   uploadComprobante.single("documento"),
+  validarContenidoArchivo,
   validarGasto,
   updateGasto
 );

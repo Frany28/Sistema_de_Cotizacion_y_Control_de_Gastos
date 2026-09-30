@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 /* ── Middlewares propios ────────────────────────────────── */
 import { errorHandler } from "./Middleware/errorHandler.js";
 import { logger } from "./Middleware/logger.js";
+import { autenticarUsuario } from "./Middleware/autenticarUsuario.js";
 
 /* ── Rutas de negocio ───────────────────────────────────── */
 import clientesRoutes from "./routes/clientes.routes.js";
@@ -42,8 +43,29 @@ dotenv.config();
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, "config", ".env") });
 
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
+app.use((_req, res, next) => {
+  res.set({
+    "Content-Security-Policy":
+      "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  });
+
+  if (process.env.NODE_ENV === "production") {
+    res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+
+  res.set("Cache-Control", "no-store");
+
+  next();
+});
 
 /* ── CORS mínimo y correcto ────────────────────────────── */
 const listaOrígenesPermitidos = [
@@ -69,28 +91,40 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ── Sesión ────────────────────────────────────────────── */
 const esProduccion = process.env.NODE_ENV === "production";
+const secretoSesion = process.env.SESSION_SECRET;
+
+if (!secretoSesion || secretoSesion.length < 32) {
+  throw new Error("SESSION_SECRET debe existir y tener al menos 32 caracteres");
+}
 
 const nombreCookie = "sidSistema"; // camelCase y claro
 const opcionesDeCookie = {
   httpOnly: true,
   sameSite: "lax", // con proxy mismo origen es suficiente
   secure: esProduccion, // true en prod (https)
+  path: "/",
+  priority: "high",
   maxAge: 1000 * 60 * 60 * 2,
 };
 
 app.use(
   session({
     name: nombreCookie,
-    secret: process.env.SESSION_SECRET || "secretoTemporal",
+    secret: secretoSesion,
     resave: false,
     saveUninitialized: false,
+    unset: "destroy",
     cookie: opcionesDeCookie,
     store: new RedisStore({ client: redisClient, prefix: "sess:" }),
   }),
 );
 
 /* ───── Estáticos y parsers ─────────────────────────────── */
-app.use("/uploads", express.static(path.resolve(__dirname, "../uploads")));
+app.use(
+  "/uploads",
+  autenticarUsuario,
+  express.static(path.resolve(__dirname, "../uploads")),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(logger);

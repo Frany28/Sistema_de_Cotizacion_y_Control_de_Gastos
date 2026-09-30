@@ -5,8 +5,12 @@ import {
   eliminarPermisoDeRol,
   obtenerPermisosPorRol,
 } from "../controllers/rolesPermisos.controller.js";
+import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
+import { requerirAdministrador } from "../Middleware/requerirAdministrador.js";
 
 const router = express.Router();
+
+router.use(autenticarUsuario, requerirAdministrador);
 
 router.get("/:rol_id/permisos", obtenerPermisosPorRol);
 router.post("/", asignarPermisoARol);

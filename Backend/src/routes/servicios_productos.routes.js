@@ -33,7 +33,12 @@ router.put(
   actualizarServicioProducto
 );
 
-router.put("/restar/:id", restarCantidadProducto);
+router.put(
+  "/restar/:id",
+  autenticarUsuario,
+  verificarPermiso("editarServicio"),
+  restarCantidadProducto,
+);
 
 /* Listar (paginado/filtrado) */
 router.get(
@@ -44,10 +49,20 @@ router.get(
 );
 
 /* Verificar duplicado por nombre */
-router.get("/check", verificarServicioProductoExistente);
+router.get(
+  "/check",
+  autenticarUsuario,
+  verificarPermiso("verServicios"),
+  verificarServicioProductoExistente,
+);
 
 /* Obtener por id (si necesitas protegerlo, agrega auth+permiso aquí también) */
-router.get("/:id", getServicioProductoById);
+router.get(
+  "/:id",
+  autenticarUsuario,
+  verificarPermiso("verServicios"),
+  getServicioProductoById,
+);
 
 /* Eliminar */
 router.delete(

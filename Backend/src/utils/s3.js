@@ -10,8 +10,12 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import multer from "multer";
 import multerS3 from "multer-s3";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import db from "../config/database.js"; // para consultas auxiliares
 
+const directorioActual = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(directorioActual, "../config/.env") });
 dotenv.config();
 
 /*──────────────────── Cliente S3 ────────────────────*/
@@ -31,16 +35,63 @@ const slugify = (str) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-console.log("[DEBUG] Bucket usado por el backend:", process.env.S3_BUCKET);
+const TIPOS_ARCHIVO = new Map([
+  ["application/pdf", ["pdf"]],
+  ["image/jpeg", ["jpg", "jpeg"]],
+  ["image/png", ["png"]],
+  ["image/gif", ["gif"]],
+  ["image/webp", ["webp"]],
+  ["text/plain", ["txt"]],
+  ["text/csv", ["csv"]],
+  [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ["docx"],
+  ],
+  [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ["xlsx"],
+  ],
+  [
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ["pptx"],
+  ],
+]);
+
+const sanitizarNombreArchivo = (nombre = "archivo") => {
+  const nombreBase = String(nombre).split(/[\\/]/).pop();
+  const seguro = nombreBase
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+  return seguro || "archivo";
+};
+
+const archivoPermitido = (
+  file,
+  { permitirPdf = true, permitirDocumentos = false } = {},
+) => {
+  const extensiones = TIPOS_ARCHIVO.get(file.mimetype);
+  const nombreSeguro = sanitizarNombreArchivo(file.originalname);
+  if (!nombreSeguro.includes(".")) return false;
+  const extension = nombreSeguro
+    .split(".")
+    .pop()
+    .toLowerCase();
+
+  if (!extensiones?.includes(extension)) return false;
+  if (file.mimetype === "application/pdf") return permitirPdf;
+  if (file.mimetype.startsWith("image/")) return true;
+  return permitirDocumentos;
+};
 
 /*──────────────── Carga rápida en memoria ───────────*/
 export const uploadComprobanteMemoria = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
   fileFilter: (req, file, cb) => {
-    const esPdf = file.mimetype === "application/pdf";
-    const esImagen = file.mimetype.startsWith("image/");
-    if (esPdf || esImagen) return cb(null, true);
+    if (archivoPermitido(file)) return cb(null, true);
     cb(new Error("Tipo de archivo no permitido para comprobante de gasto"));
   },
 }).single("documento");
@@ -108,7 +159,7 @@ export function makeUploader({ folder, maxSizeMb = 5, allowPdf = false }) {
         const ahora = new Date();
         const anio = ahora.getFullYear();
         const mes = String(ahora.getMonth() + 1).padStart(2, "0");
-        const nombreSeguro = file.originalname.replace(/\s+/g, "_");
+        const nombreSeguro = sanitizarNombreArchivo(file.originalname);
         const timestamp = Date.now();
         const clave = `${folder}/${anio}/${mes}/${timestamp}-${nombreSeguro}`;
         cb(null, clave);
@@ -116,11 +167,15 @@ export function makeUploader({ folder, maxSizeMb = 5, allowPdf = false }) {
     }),
     limits: { fileSize: maxSizeMb * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-      if (file.mimetype === "application/pdf") {
-        if (allowPdf) return cb(null, true);
-        return cb(new Error("Archivos PDF no permitidos"));
+      if (
+        archivoPermitido(file, {
+          permitirPdf: allowPdf,
+          permitirDocumentos: true,
+        })
+      ) {
+        return cb(null, true);
       }
-      return cb(null, true);
+      return cb(new Error("Tipo o extension de archivo no permitidos"));
     },
   });
 }
@@ -135,16 +190,11 @@ export const uploadFirma = multer({
     acl: "private",
     metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
     key: (req, file, cb) => {
-      const extension = file.originalname.split(".").pop();
+      const extension = sanitizarNombreArchivo(file.originalname)
+        .split(".")
+        .pop()
+        .toLowerCase();
       const marcaTiempo = Date.now(); // <- clave única por versión
-
-      console.log("[DEBUG] Subiendo firma. Nombre:", file.originalname);
-      console.log(
-        "[DEBUG] Body.nombre:",
-        req.body.nombre,
-        "params.id:",
-        req.params.id
-      );
 
       // ──────────────────────────────────────────────
       // 1) Creación de usuario (req.body.nombre existe)
@@ -152,7 +202,6 @@ export const uploadFirma = multer({
       if (req.body.nombre) {
         const nombreSlug = slugify(req.body.nombre);
         const claveFirma = `firmas/${nombreSlug}/${marcaTiempo}-firma.${extension}`;
-        console.log("[DEBUG] Clave final (crearUsuario):", claveFirma);
         return cb(null, claveFirma);
       }
 
@@ -167,7 +216,6 @@ export const uploadFirma = multer({
               : `usuario-${req.params.id}`;
 
             const claveFirma = `firmas/${nombreBase}/${marcaTiempo}-firma.${extension}`;
-            console.log("[DEBUG] Clave final (actualizarUsuario):", claveFirma);
             cb(null, claveFirma);
           })
           .catch((error) => cb(error));
@@ -178,19 +226,12 @@ export const uploadFirma = multer({
       // 3) Caso de respaldo (por seguridad)
       // ──────────────────────────────────────────────
       const claveFirma = `firmas/usuario-desconocido/${marcaTiempo}-firma.${extension}`;
-      console.log("[DEBUG] Clave final (fallback):", claveFirma);
       cb(null, claveFirma);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const tiposPermitidos = [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-    ];
-    if (tiposPermitidos.includes(file.mimetype)) return cb(null, true);
+    if (archivoPermitido(file, { permitirPdf: false })) return cb(null, true);
     return cb(new Error("Tipo de archivo no permitido para firma"));
   },
 });
@@ -225,7 +266,7 @@ export const uploadComprobante = multer({
       db.query("SELECT codigo FROM gastos WHERE id = ?", [idGasto])
         .then(([rows]) => {
           const codigoGasto = rows[0]?.codigo ?? `G-${idGasto}`;
-          const nombreSeguro = file.originalname.replace(/\s+/g, "_");
+          const nombreSeguro = sanitizarNombreArchivo(file.originalname);
           const timestamp = Date.now();
           const clave = `facturas_gastos/${anio}/${mesPalabra}/${codigoGasto}/${timestamp}-${nombreSeguro}`;
           cb(null, clave);
@@ -235,9 +276,7 @@ export const uploadComprobante = multer({
   }),
   limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const esPdf = file.mimetype === "application/pdf";
-    const esImagen = file.mimetype.startsWith("image/");
-    if (esPdf || esImagen) return cb(null, true);
+    if (archivoPermitido(file)) return cb(null, true);
     return cb(
       new Error("Tipo de archivo no permitido para comprobante de gasto")
     );
@@ -278,7 +317,7 @@ export const uploadComprobantePago = multer({
         .then(([rows]) => {
           const codigoSolicitud =
             rows[0]?.codigo?.trim().replace(/\s+/g, "_") || `SP-${solicitudId}`;
-          const nombreSeguro = file.originalname.replace(/\s+/g, "_");
+          const nombreSeguro = sanitizarNombreArchivo(file.originalname);
           const timestamp = Date.now();
           const clave = `comprobantes_pagos/${anio}/${mesPalabra}/${codigoSolicitud}/${timestamp}-${nombreSeguro}`;
           cb(null, clave);
@@ -287,7 +326,10 @@ export const uploadComprobantePago = multer({
     },
   }),
   limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, true),
+  fileFilter: (req, file, cb) => {
+    if (archivoPermitido(file)) return cb(null, true);
+    return cb(new Error("Tipo de archivo no permitido para comprobante de pago"));
+  },
 });
 
 /*────────────────── Upload genérico para cualquier archivo ───*/
@@ -328,7 +370,7 @@ export const uploadComprobanteAbono = multer({
       db.query("SELECT codigo FROM cuentas_por_cobrar WHERE id = ?", [cuentaId])
         .then(([rows]) => {
           const codigoCXC = rows[0]?.codigo ?? `CXC-${cuentaId}`;
-          const nombreSeguro = file.originalname.replace(/\s+/g, "_");
+          const nombreSeguro = sanitizarNombreArchivo(file.originalname);
           const timestamp = Date.now();
           const clave = `abonos_cxc/${anio}/${mesPalabra}/${codigoCXC}/${timestamp}-${nombreSeguro}`;
           cb(null, clave);
@@ -338,9 +380,7 @@ export const uploadComprobanteAbono = multer({
   }),
   limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const esPdf = file.mimetype === "application/pdf";
-    const esImagen = file.mimetype.startsWith("image/");
-    if (esPdf || esImagen) return cb(null, true);
+    if (archivoPermitido(file)) return cb(null, true);
     return cb(
       new Error("Tipo de archivo no permitido para comprobante de abono")
     );

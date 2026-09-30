@@ -20,10 +20,10 @@ export const validarUsuario = async (req, res, next) => {
   }
 
   // 3. Longitud mínima de password (si viene)
-  if (password && password.length < 6) {
+  if (password && password.length < 12) {
     return res
       .status(400)
-      .json({ message: "La contraseña debe tener al menos 6 caracteres" });
+      .json({ message: "La contraseña debe tener al menos 12 caracteres" });
   }
 
   next();

@@ -99,8 +99,8 @@ export const crearUsuario = async (req, res) => {
     else if (!EMAIL_REGEX.test(email))
       errores.push("El email no tiene un formato válido.");
     if (!passwordPlano) errores.push("La contraseña es requerida.");
-    else if (passwordPlano.length < 6)
-      errores.push("La contraseña debe tener al menos 6 caracteres.");
+    else if (passwordPlano.length < 12)
+      errores.push("La contraseña debe tener al menos 12 caracteres.");
     if (!rolIdBody) errores.push("El rol es requerido.");
 
     if (errores.length) {
@@ -399,11 +399,11 @@ export const actualizarUsuario = async (req, res) => {
     }
 
     if (password !== undefined) {
-      if (String(password).length < 6) {
+      if (String(password).length < 12) {
         await conexion.rollback();
         return res
           .status(400)
-          .json({ message: "La contraseña debe tener al menos 6 caracteres" });
+          .json({ message: "La contraseña debe tener al menos 12 caracteres" });
       }
 
       const coincide = await bcrypt.compare(password, filaUsuario.password);

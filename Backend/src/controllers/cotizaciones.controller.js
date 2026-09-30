@@ -1,13 +1,12 @@
 // controllers/cotizaciones.controller.js
 import db from "../config/database.js";
 import path from "path";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
 import cacheMemoria, {
   obtenerScopeSucursalCache,
   invalidarCachePorPrefijos,
 } from "../utils/cacheMemoria.js";
 import { generarHTMLCotizacion } from "../../templates/generarHTMLCotizacion.js";
+import { generarPdfSeguro, sanitizarDatosPdf } from "../utils/seguridadPdf.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -736,6 +735,19 @@ export const deleteCotizacion = async (req, res) => {
 
 export const generarPDFCotizacion = async (req, res) => {
   const { id } = req.params;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const filtroSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND c.sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   try {
     const [cotizacionData] = await db.query(
@@ -761,8 +773,8 @@ export const generarPDFCotizacion = async (req, res) => {
       JOIN clientes cli ON cli.id = c.cliente_id
       LEFT JOIN sucursales s ON c.sucursal_id = s.id
       LEFT JOIN usuarios u ON u.id = c.creadoPor
-      WHERE c.id = ?`,
-      [id],
+      WHERE c.id = ?${filtroSucursalSql}`,
+      [id, ...paramsSucursal],
     );
 
     if (cotizacionData.length === 0) {
@@ -808,26 +820,16 @@ export const generarPDFCotizacion = async (req, res) => {
       logo,
     };
 
-    const html = generarHTMLCotizacion(datosCotizacion, "final");
+    const html = generarHTMLCotizacion(
+      sanitizarDatosPdf(datosCotizacion),
+      "final",
+    );
 
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = await generarPdfSeguro(html, {
       format: "A4",
       printBackground: true,
       margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
     });
-
-    await browser.close();
 
     res
       .set({

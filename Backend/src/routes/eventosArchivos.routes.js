@@ -11,6 +11,7 @@ import {
 } from "../controllers/eventosArchivos.controller.js";
 import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
 import { verificarPermiso } from "../Middleware/verificarPermiso.js";
+import { limitarGeneracionPdf } from "../Middleware/limitesSeguridad.js";
 
 const router = Router();
 
@@ -92,6 +93,7 @@ router.get(
   autenticarUsuario,
   verificarRolAdminSupervisor,
   verificarPermiso("verEventosArchivos"),
+  limitarGeneracionPdf,
   generarPdfMovimientosArchivos
 );
 

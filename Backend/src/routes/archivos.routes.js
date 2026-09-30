@@ -4,6 +4,7 @@ import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
 import { verificarPermiso } from "../Middleware/verificarPermiso.js";
 import { uploadGeneric } from "../utils/s3.js";
 import { validarDestinoRepositorio } from "../Middleware/validarDestinoRepositorio.js";
+import { validarContenidoArchivo } from "../Middleware/validarContenidoArchivo.js";
 
 import {
   obtenerArbolArchivos,
@@ -38,7 +39,9 @@ router.get(
 router.put(
   "/sustituir/:registroTipo/:registroId",
   autenticarUsuario,
+  verificarPermiso("editarArchivos"),
   uploadGeneric.single("archivo"),
+  validarContenidoArchivo,
   sustituirArchivo,
 );
 
@@ -58,7 +61,12 @@ router.get(
 );
 
 /*─────────────────────── Listados ─────────────────────────────*/
-router.get("/papelera", autenticarUsuario, listarArchivosEliminados);
+router.get(
+  "/papelera",
+  autenticarUsuario,
+  verificarPermiso("verArchivos"),
+  listarArchivosEliminados,
+);
 
 router.get(
   "/",
@@ -122,7 +130,12 @@ router.delete(
 );
 
 /*─────────────────────── Versiones ────────────────────────────*/
-router.get("/:id/total-versiones", autenticarUsuario, contarVersionesArchivo);
+router.get(
+  "/:id/total-versiones",
+  autenticarUsuario,
+  verificarPermiso("verArchivos"),
+  contarVersionesArchivo,
+);
 
 router.get(
   "/:id/versiones",
@@ -144,6 +157,7 @@ router.post(
   autenticarUsuario,
   verificarPermiso("editarArchivos"),
   uploadGeneric.single("archivo"),
+  validarContenidoArchivo,
   validarDestinoRepositorio,
   subirArchivoRepositorio,
 );

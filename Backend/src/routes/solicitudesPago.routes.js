@@ -13,6 +13,8 @@ import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
 import { verificarPermiso } from "../Middleware/verificarPermiso.js";
 import { uploadComprobantePago } from "../utils/s3.js";
 import { validarCuota } from "../Middleware/validarCuota.js";
+import { limitarGeneracionPdf } from "../Middleware/limitesSeguridad.js";
+import { validarContenidoArchivo } from "../Middleware/validarContenidoArchivo.js";
 
 const router = express.Router();
 
@@ -23,7 +25,13 @@ router.get(
   obtenerSolicitudesPago
 );
 
-router.get("/:id/pdf", generarPDFSolicitudPago);
+router.get(
+  "/:id/pdf",
+  autenticarUsuario,
+  verificarPermiso("verSolicitudesPago"),
+  limitarGeneracionPdf,
+  generarPDFSolicitudPago,
+);
 
 router.get(
   "/:id",
@@ -59,6 +67,7 @@ router.patch(
   verificarPermiso("pagarSolicitudPago"),
   validarCuota,
   uploadComprobantePago.single("comprobante"),
+  validarContenidoArchivo,
   pagarSolicitudPago
 );
 

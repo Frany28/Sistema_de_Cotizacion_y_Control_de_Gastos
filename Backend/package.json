@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "test": "node --test --experimental-test-isolation=none test/*.test.js",
     "lint": "eslint .",
     "vercel-build": "echo \"Building…\""
   },

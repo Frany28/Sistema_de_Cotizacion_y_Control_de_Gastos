@@ -8,9 +8,8 @@ import {
 } from "../utils/s3.js";
 import { obtenerOcrearGrupoComprobante } from "../utils/gruposArchivos.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
 import { generarHTMLOrdenPago } from "../../templates/generarHTMLOrdenDePago.js";
+import { generarPdfSeguro, sanitizarDatosPdf } from "../utils/seguridadPdf.js";
 import cacheMemoria, {
   obtenerScopeSucursalCache,
   invalidarCachePorPrefijos,
@@ -28,8 +27,6 @@ const PREFIJOS_CACHE_SOLICITUDES = [
 ];
 
 async function firmaToDataUrl(key) {
-  console.log("🪣 [DEBUG] Intentando leer del bucket:", process.env.S3_BUCKET);
-  console.log("🪣 [DEBUG] Clave que se intenta leer:", key);
   if (!key) return null; // sin firma
   const Bucket = process.env.S3_BUCKET;
   const { Body } = await s3.send(new GetObjectCommand({ Bucket, Key: key }));
@@ -43,6 +40,19 @@ async function firmaToDataUrl(key) {
 
 export const generarPDFSolicitudPago = async (req, res) => {
   const { id } = req.params;
+  const scopeSucursal = obtenerScopeSucursalCache(req);
+
+  if (!scopeSucursal) {
+    return res
+      .status(403)
+      .json({ message: "Tu usuario no tiene sucursal asignada." });
+  }
+
+  const esAdmin = Number(req.user?.rol_id) === 1;
+  const whereSucursalSql =
+    esAdmin && scopeSucursal === "todas" ? "" : " AND sp.sucursal_id = ?";
+  const paramsSucursal =
+    esAdmin && scopeSucursal === "todas" ? [] : [Number(scopeSucursal)];
 
   /* ---------- 1. Consulta completa ---------- */
   const [[row]] = await db.execute(
@@ -77,13 +87,22 @@ export const generarPDFSolicitudPago = async (req, res) => {
     LEFT JOIN usuarios us      ON us.id = sp.usuario_solicita_id
     LEFT JOIN usuarios ur      ON ur.id = sp.usuario_revisa_id
     LEFT JOIN usuarios up      ON up.id = sp.usuario_aprueba_id
-    WHERE sp.id = ?`,
-    [id],
+    WHERE sp.id = ?${whereSucursalSql}`,
+    [id, ...paramsSucursal],
   );
 
   if (!row) {
     return res.status(404).json({ message: "Solicitud de pago no encontrada" });
   }
+
+  const [[abono]] = await db.execute(
+    `SELECT monto_pagado
+       FROM pagos_realizados
+      WHERE solicitud_pago_id = ?
+      ORDER BY fecha_pago ASC, id ASC
+      LIMIT 1`,
+    [id],
+  );
 
   /* ---------- 2. Firmas → Base64 ---------- */
   const [firmaSolicita, firmaRevisa, firmaAprueba] = await Promise.all([
@@ -153,7 +172,7 @@ export const generarPDFSolicitudPago = async (req, res) => {
     referencia: row.referencia_pago || "—",
 
     montoSolicitado: row.monto_total,
-    montoAbono: abono.monto_pagado,
+    montoAbono: abono?.monto_pagado ?? 0,
     montoPagado: row.monto_pagado,
     diferencia,
     moneda: row.moneda,
@@ -190,27 +209,14 @@ export const generarPDFSolicitudPago = async (req, res) => {
     logo,
   };
 
-  const html = generarHTMLOrdenPago(datos, "final");
+  const html = generarHTMLOrdenPago(sanitizarDatosPdf(datos), "final");
 
   /* ---------- 7. Puppeteer → PDF ---------- */
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true,
-  });
-
-  const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: "networkidle0" });
-
-  const pdfBuffer = await page.pdf({
+  const pdfBuffer = await generarPdfSeguro(html, {
     format: "A4",
     printBackground: true,
     margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
   });
-
-  await browser.close();
 
   /* ============================================================
    8) GUARDAR PDF (ORDEN DE PAGO) EN S3 + REGISTRAR EN BD
@@ -576,27 +582,14 @@ async function guardarPdfOrdenPagoPrimerAbono({
       logo,
     };
 
-    const html = generarHTMLOrdenPago(datos, "final");
+    const html = generarHTMLOrdenPago(sanitizarDatosPdf(datos), "final");
 
     // 7) Puppeteer → PDF buffer
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = await generarPdfSeguro(html, {
       format: "A4",
       printBackground: true,
       margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
     });
-
-    await browser.close();
 
     // 8) Carpeta S3: .../SP-00005/ordenes_pago/...
     const meses = [
@@ -1726,27 +1719,14 @@ async function guardarPdfOrdenPagoPorAbono({
       logo,
     };
 
-    const html = generarHTMLOrdenPago(datos, "final");
+    const html = generarHTMLOrdenPago(sanitizarDatosPdf(datos), "final");
 
     // 10) Generar PDF
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = await generarPdfSeguro(html, {
       format: "A4",
       printBackground: true,
       margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
     });
-
-    await browser.close();
 
     // 11) Construir ruta S3
     const meses = [

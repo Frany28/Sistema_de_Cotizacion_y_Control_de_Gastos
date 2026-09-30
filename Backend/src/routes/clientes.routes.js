@@ -41,7 +41,12 @@ router.get(
 );
 
 // Ruta para verificar existencia de cliente (sin autenticación)
-router.get("/check", verificarClienteExistente);
+router.get(
+  "/check",
+  autenticarUsuario,
+  verificarPermiso("verClientes"),
+  verificarClienteExistente,
+);
 
 router.get(
   "/:id/validar-eliminacion",

@@ -7,8 +7,14 @@ export const errorHandler = (err, req, res, next) => {
     metodo: req.method,
   });
 
-  res.status(err.status || 500).json({
-    message: err.message || "Error interno del servidor",
+  const status = Number(err.status || err.statusCode) || 500;
+  const mensajePublico =
+    status >= 500
+      ? "Error interno del servidor"
+      : err.message || "No se pudo procesar la solicitud";
+
+  res.status(status).json({
+    message: mensajePublico,
   });
 };
 

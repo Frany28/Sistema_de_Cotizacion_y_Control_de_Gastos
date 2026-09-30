@@ -5,6 +5,7 @@ import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
 import { verificarPermiso } from "../Middleware/verificarPermiso.js";
 import { uploadFirma } from "../utils/s3.js";
 import cacheMemoria from "../utils/cacheMemoria.js";
+import { validarContenidoArchivo } from "../Middleware/validarContenidoArchivo.js";
 
 import {
   obtenerUsuarios,
@@ -37,6 +38,7 @@ router.post(
   autenticarUsuario,
   verificarPermiso("crearUsuario"),
   uploadFirma.single("firma"),
+  validarContenidoArchivo,
   crearUsuario
 );
 
@@ -46,6 +48,7 @@ router.put(
   autenticarUsuario,
   verificarPermiso("editarUsuario"),
   uploadFirma.single("firma"),
+  validarContenidoArchivo,
   actualizarUsuario
 );
 

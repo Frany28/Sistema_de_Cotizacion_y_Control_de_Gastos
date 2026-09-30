@@ -1,11 +1,20 @@
-// controllers/auth.controller.js
 import db from "../config/database.js";
 import bcrypt from "bcrypt";
+
+const HASH_COMPARACION_SIMULADA =
+  "$2b$10$1pQN9js1hkMaTMXHQsFheOstscH8rgOpyN82vSY6a3cyJyckG5AfW";
 
 export const login = async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if (
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    !email.trim() ||
+    !password ||
+    email.length > 254 ||
+    password.length > 1024
+  ) {
     return res
       .status(400)
       .json({ message: "Email y contraseña son obligatorios" });
@@ -14,46 +23,41 @@ export const login = async (req, res) => {
   try {
     const [rows] = await db.query(
       "SELECT * FROM usuarios WHERE email = ? AND estado = 'activo'",
-      [email]
+      [email.trim()],
     );
 
-    if (rows.length === 0) {
-      return res
-        .status(401)
-        .json({ message: "Usuario no encontrado o inactivo" });
+    const usuario = rows[0] ?? null;
+    const passwordValida = await bcrypt.compare(
+      password,
+      usuario?.password ?? HASH_COMPARACION_SIMULADA,
+    );
+
+    if (!usuario || !passwordValida) {
+      return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    const usuario = rows[0];
+    await new Promise((resolve, reject) => {
+      req.session.regenerate((error) => (error ? reject(error) : resolve()));
+    });
 
-    const passwordValida = await bcrypt.compare(password, usuario.password);
-    if (!passwordValida) {
-      return res.status(401).json({ message: "Contraseña incorrecta" });
-    }
-
-    // Guardar datos esenciales en la sesión
     req.session.usuario = {
       id: usuario.id,
       rol_id: usuario.rol_id,
       nombre: usuario.nombre,
       email: usuario.email,
     };
+    req.session.userId = usuario.id;
 
-    req.session.userId = usuario.id; 
+    await new Promise((resolve, reject) => {
+      req.session.save((error) => (error ? reject(error) : resolve()));
+    });
 
-    // Verificar que la sesión se haya guardado correctamente
-    req.session.save((err) => {
-      if (err) {
-        console.error("Error al guardar la sesión:", err);
-        return res.status(500).json({ message: "Error al iniciar sesión" });
-      }
-
-      res.json({
-        message: "Login exitoso",
-        usuario: req.session.usuario,
-      });
+    return res.json({
+      message: "Login exitoso",
+      usuario: req.session.usuario,
     });
   } catch (error) {
     console.error("Error al iniciar sesión:", error);
-    res.status(500).json({ message: "Error interno al iniciar sesión" });
+    return res.status(500).json({ message: "Error interno al iniciar sesión" });
   }
 };

@@ -1,8 +1,7 @@
 // src/controllers/eventosArchivos.controller.js
 import db from "../config/database.js";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
 import { generarHTMLEventosArchivos } from "../../templates/generarHTMLEventosArchivos.js";
+import { generarPdfSeguro, sanitizarDatosPdf } from "../utils/seguridadPdf.js";
 import PDFDocument from "pdfkit";
 import cacheMemoria from "../utils/cacheMemoria.js"; // 🧠 cache en memoria
 
@@ -814,33 +813,26 @@ export const generarPdfMovimientosArchivos = async (req, res) => {
       cacheMemoria.set(claveDatos, datosPdf, 180);
     }
 
-    const html = generarHTMLEventosArchivos({
-      usuario: req.user?.nombre || "admin",
-      fechaInicioTexto: datosPdf.fechaInicioTexto,
-      fechaFinTexto: datosPdf.fechaFinTexto,
-      totales: datosPdf.totales,
-      detalleMovimientos: datosPdf.detalleMovimientos,
-      mostrarGrafico: true,
-      mostrarDetalle: true,
-      tituloReporte: "REPORTE DE MOVIMIENTOS DE ARCHIVOS",
-      forzarDataUriLogo: true,
-    });
+    const html = generarHTMLEventosArchivos(
+      sanitizarDatosPdf({
+        usuario: req.user?.nombre || "admin",
+        fechaInicioTexto: datosPdf.fechaInicioTexto,
+        fechaFinTexto: datosPdf.fechaFinTexto,
+        totales: datosPdf.totales,
+        detalleMovimientos: datosPdf.detalleMovimientos,
+        mostrarGrafico: true,
+        mostrarDetalle: true,
+        tituloReporte: "REPORTE DE MOVIMIENTOS DE ARCHIVOS",
+        forzarDataUriLogo: true,
+      }),
+    );
 
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = await generarPdfSeguro(html, {
       printBackground: true,
       format: "A4",
       margin: { top: "16mm", right: "14mm", bottom: "14mm", left: "14mm" },
       preferCSSPageSize: true,
     });
-    await browser.close();
 
     res
       .set({

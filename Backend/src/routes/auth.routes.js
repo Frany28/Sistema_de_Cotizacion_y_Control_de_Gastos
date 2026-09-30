@@ -1,27 +1,29 @@
 import express from "express";
 import { login } from "../controllers/auth.controller.js";
+import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
+import { limitarIntentosLogin } from "../Middleware/limitesSeguridad.js";
 
 const router = express.Router();
 
-router.get("/verificar-sesion", (req, res) => {
-  if (req.session?.usuario) {
-    res.json({ message: "Sesión activa", usuario: req.session.usuario });
-  } else {
-    res.status(401).json({ message: "Sesión no activa" });
-  }
+router.get("/verificar-sesion", autenticarUsuario, (req, res) => {
+  res.json({ message: "Sesión activa", usuario: req.user });
 });
 
-router.post("/login", login);
+router.post("/login", limitarIntentosLogin, login);
 
 router.post("/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
+  req.session.destroy((error) => {
+    if (error) {
       return res.status(500).json({ message: "Error al cerrar sesión" });
     }
 
-    // Eliminar cookie de sesión
-    res.clearCookie("csidSistema");
-    res.json({ message: "Sesión cerrada correctamente" });
+    res.clearCookie("sidSistema", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
+    return res.json({ message: "Sesión cerrada correctamente" });
   });
 });
 

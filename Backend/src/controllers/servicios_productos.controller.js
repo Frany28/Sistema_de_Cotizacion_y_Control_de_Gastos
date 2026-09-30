@@ -260,42 +260,38 @@ export const actualizarServicioProducto = async (req, res) => {
 
 export const restarCantidadProducto = async (req, res) => {
   const { producto_id, cantidad_vendida } = req.body;
+  const productoId = Number(req.params.id);
 
   if (
-    !producto_id ||
+    !Number.isInteger(productoId) ||
+    productoId <= 0 ||
+    (producto_id !== undefined && Number(producto_id) !== productoId) ||
     typeof cantidad_vendida !== "number" ||
+    !Number.isFinite(cantidad_vendida) ||
     cantidad_vendida <= 0
   ) {
     return res.status(400).json({
-      message: "Se requiere producto_id y cantidad_vendida válida",
+      message:
+        "El id de la ruta debe coincidir con producto_id y cantidad_vendida debe ser válida",
     });
   }
 
   try {
-    const [rows] = await db.execute(
-      "SELECT cantidad_actual FROM servicios_productos WHERE id = ? AND tipo = 'producto'",
-      [producto_id]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Producto no encontrado" });
-    }
-
-    const actual = rows[0].cantidad_actual;
-
-    if (cantidad_vendida > actual) {
-      return res.status(400).json({
-        message: "No hay suficiente inventario para realizar la venta",
-      });
-    }
-
-    await db.execute(
+    const [resultado] = await db.execute(
       `UPDATE servicios_productos 
        SET cantidad_anterior = cantidad_actual,
            cantidad_actual = cantidad_actual - ?
-       WHERE id = ?`,
-      [cantidad_vendida, producto_id]
+       WHERE id = ?
+         AND tipo = 'producto'
+         AND cantidad_actual >= ?`,
+      [cantidad_vendida, productoId, cantidad_vendida]
     );
+
+    if (resultado.affectedRows === 0) {
+      return res.status(409).json({
+        message: "Producto inexistente o inventario insuficiente",
+      });
+    }
 
     res.json({ message: "Cantidad actualizada exitosamente" });
   } catch (error) {

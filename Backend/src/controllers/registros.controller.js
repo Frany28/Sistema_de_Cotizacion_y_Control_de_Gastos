@@ -1,6 +1,5 @@
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
 import { generarHTMLCotizacion } from "../../templates/generarHTMLCotizacion.js";
+import { generarPdfSeguro, sanitizarDatosPdf } from "../utils/seguridadPdf.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import db from "../config/database.js";
@@ -611,26 +610,18 @@ export const generarVistaPreviaCotizacion = async (req, res) => {
       });
 
     // 1) Plantilla HTML
-    const html = generarHTMLCotizacion(datosCotizacion, "preview");
-
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+    const datosSeguros = sanitizarDatosPdf({
+      ...datosCotizacion,
+      // La vista previa no acepta URLs de imagen controladas por el cliente.
+      logo: null,
     });
+    const html = generarHTMLCotizacion(datosSeguros, "preview");
 
-    // 3) Render y PDF
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = await generarPdfSeguro(html, {
       format: "A4",
       printBackground: true,
       margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
     });
-
-    await browser.close();
 
     // 4) Respuesta
     res

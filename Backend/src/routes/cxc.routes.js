@@ -12,6 +12,7 @@ import {
 } from "../controllers/cxc.controller.js";
 import { autenticarUsuario } from "../Middleware/autenticarUsuario.js";
 import { verificarPermiso } from "../Middleware/verificarPermiso.js";
+import { validarContenidoArchivo } from "../Middleware/validarContenidoArchivo.js";
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ router.post(
   autenticarUsuario,
   verificarPermiso("registrarAbonoCliente"),
   uploadComprobanteAbono.single("comprobante"),
+  validarContenidoArchivo,
   registrarAbono
 );
 
